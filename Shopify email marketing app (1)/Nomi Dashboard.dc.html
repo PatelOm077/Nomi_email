@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/broadsheet-aa38e576-8c35-4423-826a-6bdc615bcfde/styles.css">
+<script src="_ds/broadsheet-aa38e576-8c35-4423-826a-6bdc615bcfde/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text)}
+a{color:var(--color-accent-700)}
+a:hover{color:var(--color-accent-900)}
+</style>
+</helmet>
+<div style="min-height:100vh;background:var(--color-bg);padding:var(--space-8) var(--space-8) 80px;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif">
+<div style="max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:72px">
+
+<header style="display:flex;flex-direction:column;gap:var(--space-4)">
+<div style="display:flex;align-items:center;gap:var(--space-3)">
+<div style="width:40px;height:40px;background:var(--color-text);border-radius:4px;display:flex;align-items:center;justify-content:center;flex:none">
+<svg width="22" height="22" viewBox="0 0 64 64" fill="none" stroke="var(--color-bg)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M50 16 L14 30 L29 36 L50 16 Z"/><path d="M29 36 L33 50 L50 16"/></svg>
+</div>
+<span style="font:600 24px/1 var(--font-heading);letter-spacing:-0.03em;color:var(--color-text)">Nomi</span>
+<span style="width:1px;height:20px;background:var(--color-neutral-300)"></span>
+<span style="font:14px ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--color-neutral-700)">Moon &amp; Mango</span>
+</div>
+<p style="margin:0;font:600 34px/1.2 var(--font-heading);letter-spacing:-0.02em;color:var(--color-text)">Your emails made $1,284 this month.</p>
+</header>
+
+<section style="display:flex;flex-direction:column;gap:var(--space-6)">
+<h2 style="margin:0;font:600 22px/1.2 var(--font-heading);letter-spacing:-0.02em;color:var(--color-text)">Templates</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(226px,1fr));gap:var(--space-6)">
+
+<div style="background:#fff;border-radius:var(--radius-md);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column">
+<div style="height:208px;background:#f7f1e8;padding:14px 16px;display:flex;flex-direction:column;gap:8px;overflow:hidden">
+<div style="text-align:center;font:600 9px var(--font-heading);letter-spacing:0.24em;color:#7a5a3c">MOON &amp; MANGO</div>
+<div style="font:600 11px var(--font-heading);color:#3a2f26;padding-top:2px">Thank you, Ananya.</div>
+<div style="display:flex;gap:8px;align-items:center">
+<div style="width:26px;height:32px;background:#e6d3bd;border-radius:1px;flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:3px">
+<div style="height:4px;width:80%;background:#d9cdbe"></div>
+<div style="height:4px;width:45%;background:#e6ddd2"></div>
+</div>
+<div style="font:8px ui-sans-serif,system-ui,sans-serif;color:#7a6a5a">$180</div>
+</div>
+<div style="display:flex;gap:8px;align-items:center">
+<div style="width:26px;height:32px;background:#dfd6c4;border-radius:1px;flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:3px">
+<div style="height:4px;width:70%;background:#d9cdbe"></div>
+<div style="height:4px;width:40%;background:#e6ddd2"></div>
+</div>
+<div style="font:8px ui-sans-serif,system-ui,sans-serif;color:#7a6a5a">$96</div>
+</div>
+<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e6ddd2;padding-top:6px;margin-top:2px">
+<span style="font:8px ui-sans-serif,system-ui,sans-serif;color:#7a6a5a">Total</span>
+<span style="font:600 9px var(--font-heading);color:#3a2f26">$276</span>
+</div>
+<div style="align-self:center;background:#3a2f26;color:#f7f1e8;font:7px ui-sans-serif,system-ui,sans-serif;letter-spacing:0.1em;padding:5px 12px;border-radius:1px;margin-top:2px">TRACK ORDER</div>
+</div>
+<div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font:600 14px ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--color-text)">Order confirmation</span>
+<sc-if value="{{ showBadges }}" hint-placeholder-val="{{ true }}"><span style="font:11px ui-sans-serif,system-ui,sans-serif;color:var(--color-accent-800);background:var(--color-accent-100);padding:3px 8px;border-radius:var(--radius-md);white-space:nowrap">Live</span></sc-if>
+</div>
+</div>
+
+<div style="background:#fff;border-radius:var(--radius-md);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column">
+<div style="height:208px;background:#fbfbfa;padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow:hidden">
+<div style="font:600 10px var(--font-heading);color:var(--color-neutral-800)">Your order is on its way</div>
+<div style="display:flex;align-items:center;gap:0;padding:6px 0">
+<div style="width:8px;height:8px;border-radius:50%;background:var(--color-accent);flex:none"></div>
+<div style="flex:1;height:2px;background:var(--color-accent-300)"></div>
+<div style="width:8px;height:8px;border-radius:50%;background:var(--color-accent);flex:none"></div>
+<div style="flex:1;height:2px;background:var(--color-neutral-300)"></div>
+<div style="width:8px;height:8px;border-radius:50%;background:var(--color-neutral-300);flex:none"></div>
+</div>
+<div style="display:flex;justify-content:space-between;font:7px ui-sans-serif,system-ui,sans-serif;color:var(--color-neutral-600)"><span>Packed</span><span>Shipped</span><span>Delivered</span></div>
+<div style="display:flex;flex-direction:column;gap:4px;padding-top:6px">
+<div style="height:4px;width:90%;background:var(--color-neutral-200)"></div>
+<div style="height:4px;width:76%;background:var(--color-neutral-200)"></div>
+<div style="height:4px;width:52%;background:var(--color-neutral-200)"></div>
+</div>
+<div style="background:var(--color-neutral-100);border-radius:1px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;margin-top:auto">
+<div style="font:7px ui-sans-serif,system-ui,sans-serif;letter-spacing:0.12em;color:var(--color-neutral-600)">TRACKING</div>
+<div style="font:600 9px ui-sans-serif,system-ui,sans-serif;color:var(--color-neutral-900)">1Z 998 AA1 012</div>
+</div>
+</div>
+<div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font:600 14px ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--color-text)">Shipping update</span>
+<sc-if value="{{ showBadges }}" hint-placeholder-val="{{ true }}"><span style="font:11px ui-sans-serif,system-ui,sans-serif;color:var(--color-accent-800);background:var(--color-accent-100);padding:3px 8px;border-radius:var(--radius-md);white-space:nowrap">Live</span></sc-if>
+</div>
+</div>
+
+<div style="background:#fff;border-radius:var(--radius-md);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column">
+<div style="height:208px;background:#fbfbfa;padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow:hidden">
+<div style="font:600 10px var(--font-heading);color:var(--color-neutral-800)">Still thinking it over?</div>
+<div style="display:flex;gap:10px;align-items:flex-start">
+<div style="width:38px;height:46px;background:var(--color-neutral-200);border-radius:1px;flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:4px;padding-top:2px">
+<div style="height:4px;width:85%;background:var(--color-neutral-200)"></div>
+<div style="height:4px;width:60%;background:var(--color-neutral-200)"></div>
+<div style="font:600 9px ui-sans-serif,system-ui,sans-serif;color:var(--color-neutral-900);padding-top:2px">$142</div>
+</div>
+</div>
+<div style="display:flex;gap:10px;align-items:flex-start">
+<div style="width:38px;height:46px;background:var(--color-neutral-100);border-radius:1px;flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:4px;padding-top:2px">
+<div style="height:4px;width:72%;background:var(--color-neutral-200)"></div>
+<div style="height:4px;width:52%;background:var(--color-neutral-200)"></div>
+<div style="font:600 9px ui-sans-serif,system-ui,sans-serif;color:var(--color-neutral-900);padding-top:2px">$88</div>
+</div>
+</div>
+<div style="font:7px ui-sans-serif,system-ui,sans-serif;color:var(--color-neutral-600)">Held in your cart for 24 hours</div>
+<div style="align-self:flex-start;background:var(--color-accent);color:#fff;font:7px ui-sans-serif,system-ui,sans-serif;letter-spacing:0.1em;padding:5px 12px;border-radius:1px">RETURN TO CART</div>
+</div>
+<div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font:600 14px ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--color-text)">Abandoned cart</span>
+<sc-if value="{{ showBadges }}" hint-placeholder-val="{{ true }}"><span style="font:11px ui-sans-serif,system-ui,sans-serif;color:var(--color-neutral-700);background:var(--color-neutral-200);padding:3px 8px;border-radius:var(--radius-md);white-space:nowrap">Draft</span></sc-if>
+</div>
+</div>
+
+<div style="background:#fff;border-radius:var(--radius-md);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column">
+<div style="height:208px;background:#fbfbfa;padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow:hidden">
+<div style="font:600 10px var(--font-heading);color:var(--color-neutral-800)">How did it wear?</div>
+<div style="display:flex;gap:5px;padding:2px 0">
+<div style="width:11px;height:11px;border:1.4px solid var(--color-accent-600);border-radius:50%"></div>
+<div style="width:11px;height:11px;border:1.4px solid var(--color-accent-600);border-radius:50%"></div>
+<div style="width:11px;height:11px;border:1.4px solid var(--color-accent-600);border-radius:50%"></div>
+<div style="width:11px;height:11px;border:1.4px solid var(--color-neutral-300);border-radius:50%"></div>
+<div style="width:11px;height:11px;border:1.4px solid var(--color-neutral-300);border-radius:50%"></div>
+</div>
+<div style="display:flex;gap:10px;align-items:center">
+<div style="width:36px;height:44px;background:var(--color-neutral-200);border-radius:1px;flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:4px">
+<div style="height:4px;width:78%;background:var(--color-neutral-200)"></div>
+<div style="height:4px;width:50%;background:var(--color-neutral-200)"></div>
+</div>
+</div>
+<div style="border:1px solid var(--color-neutral-200);border-radius:1px;flex:1;min-height:26px"></div>
+<div style="align-self:flex-start;background:var(--color-accent);color:#fff;font:7px ui-sans-serif,system-ui,sans-serif;letter-spacing:0.1em;padding:5px 12px;border-radius:1px">LEAVE A REVIEW</div>
+</div>
+<div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font:600 14px ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--color-text)">Review request</span>
+<sc-if value="{{ showBadges }}" hint-placeholder-val="{{ true }}"><span style="font:11px ui-sans-serif,system-ui,sans-serif;color:var(--color-neutral-700);background:var(--color-neutral-200);padding:3px 8px;border-radius:var(--radius-md);white-space:nowrap">Draft</span></sc-if>
+</div>
+</div>
+
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:var(--space-4);max-width:640px">
+<h2 style="margin:0;font:600 22px/1.2 var(--font-heading);letter-spacing:-0.02em;color:var(--color-text)">Campaigns</h2>
+<form style="display:flex;gap:var(--space-3);align-items:center" onSubmit="{{ onSubmit }}">
+<input class="input" type="text" placeholder="{{ placeholder }}" style="flex:1;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;padding:11px 14px;background:#fff">
+<button class="btn btn-primary" type="submit" style="font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;white-space:nowrap;flex:none">Generate</button>
+</form>
+</section>
+
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;showBadges&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Templates&quot;},&quot;placeholder&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Describe a campaign — 'Diwali sale, 15% off'&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Campaigns&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      showBadges: this.props.showBadges ?? true,
+      placeholder: this.props.placeholder ?? "Describe a campaign — 'Diwali sale, 15% off'",
+      onSubmit: (e) => e.preventDefault(),
+    };
+  }
+}
+</script>
+</body>
+</html>

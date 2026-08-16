@@ -1,0 +1,54 @@
+:root {
+  /* Base */
+  --nomi-ink: #201e1d;
+  --nomi-paper: #f3f2f2;
+  --nomi-white: #ffffff;
+  --nomi-cyan: #0088b0;        /* fills, large elements, icons */
+  --nomi-cyan-text: #00789e;   /* body-size text and links — clears contrast on white */
+  --nomi-magenta: #d6006c;     /* spot color, one thing at a time */
+
+  /* Neutral ramp */
+  --nomi-neutral-100: #f8f4f4;
+  --nomi-neutral-200: #eae7e7;
+  --nomi-neutral-300: #d7d3d3;
+  --nomi-neutral-400: #bab6b6;
+  --nomi-neutral-500: #9b9797;
+  --nomi-neutral-600: #7d7979;
+  --nomi-neutral-700: #605d5d;
+  --nomi-neutral-800: #444141;
+  --nomi-neutral-900: #2d2b2b;
+
+  /* Cyan ramp */
+  --nomi-cyan-100: #e9f8ff;
+  --nomi-cyan-200: #cbeeff;
+  --nomi-cyan-300: #99e0ff;
+  --nomi-cyan-400: #62c5ee;
+  --nomi-cyan-500: #38a6cf;
+  --nomi-cyan-600: #1186ac;
+  --nomi-cyan-700: #006786;
+  --nomi-cyan-800: #004961;
+  --nomi-cyan-900: #0a303e;
+
+  /* Magenta ramp */
+  --nomi-magenta-100: #fff1f4;
+  --nomi-magenta-200: #ffdee6;
+  --nomi-magenta-300: #ffc0d0;
+  --nomi-magenta-400: #ff90b1;
+  --nomi-magenta-500: #ff458e;
+  --nomi-magenta-600: #d82071;
+  --nomi-magenta-700: #aa0b56;
+  --nomi-magenta-800: #790e3d;
+  --nomi-magenta-900: #4b1528;
+
+  /* Semantic */
+  --surface-page: var(--nomi-paper);
+  --surface-card: var(--nomi-white);
+  --surface-inverse: var(--nomi-ink);
+  --text-body: var(--nomi-ink);
+  --text-muted: var(--nomi-neutral-700);
+  --text-inverse: var(--nomi-paper);
+  --text-link: var(--nomi-cyan-text);
+  --border-subtle: var(--nomi-neutral-300);
+  --accent-action: var(--nomi-cyan);
+  --accent-spot: var(--nomi-magenta);
+}

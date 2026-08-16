@@ -1,0 +1,25 @@
+:root {
+  /* Serif owns the brand voice: wordmark, headings, marketing, long-form. */
+  --font-display: "Source Serif 4", Georgia, serif;
+  --font-body: "Source Serif 4", Georgia, serif;
+  /* System sans runs interface chrome inside Shopify admin, next to Polaris. */
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Email: webfonts are stripped by Gmail and Outlook — Georgia carries the tone. */
+  --font-email: "Source Serif 4", Georgia, serif;
+
+  --weight-regular: 400;
+  --weight-semibold: 600;
+
+  --text-display: 64px;
+  --text-h1: 44px;
+  --text-h2: 26px;
+  --text-h3: 19px;
+  --text-body-size: 15px;
+  --text-ui: 14px;
+  --text-caption: 13px;
+
+  --leading-tight: 1.1;
+  --leading-normal: 1.55;
+  --tracking-display: -0.03em;
+  --tracking-heading: -0.02em;
+}

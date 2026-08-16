@@ -1,0 +1,303 @@
+/* Nomi design tokens — mirrors /Shopify email marketing app (1)/tokens/*.css */
+:root {
+  --nomi-ink: #201e1d;
+  --nomi-paper: #f3f2f2;
+  --nomi-white: #ffffff;
+  --nomi-cyan: #0088b0;
+  --nomi-magenta: #d6006c;
+
+  --nomi-neutral-100: #f8f4f4;
+  --nomi-neutral-200: #eae7e7;
+  --nomi-neutral-300: #d7d3d3;
+  --nomi-neutral-600: #7d7979;
+  --nomi-neutral-700: #605d5d;
+  --nomi-neutral-800: #444141;
+  --nomi-neutral-900: #2d2b2b;
+
+  --nomi-cyan-100: #e9f8ff;
+  --nomi-cyan-300: #99e0ff;
+  --nomi-cyan-600: #1186ac;
+  --nomi-cyan-700: #006786;
+  --nomi-cyan-800: #004961;
+
+  --nomi-font-heading: "Source Serif 4", Georgia, serif;
+  --nomi-font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+
+  --nomi-space-1: 5px;
+  --nomi-space-2: 10px;
+  --nomi-space-3: 15px;
+  --nomi-space-4: 20px;
+  --nomi-space-6: 30px;
+  --nomi-space-8: 40px;
+
+  --nomi-radius-sm: 1px;
+  --nomi-radius-md: 2px;
+  --nomi-radius-lg: 4px;
+
+  --nomi-shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
+}
+
+/* — page shell — */
+.nomi-page {
+  min-height: 100vh;
+  background: var(--nomi-paper);
+  color: var(--nomi-ink);
+  font-family: var(--nomi-font-ui);
+  padding: var(--nomi-space-8) var(--nomi-space-8) 80px;
+}
+.nomi-shell {
+  max-width: 1040px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 72px;
+}
+
+/* — header — */
+.nomi-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nomi-space-4);
+}
+.nomi-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--nomi-space-3);
+}
+.nomi-mark {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  background: var(--nomi-ink);
+  border-radius: var(--nomi-radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nomi-wordmark {
+  font: 600 24px/1 var(--nomi-font-heading);
+  letter-spacing: -0.03em;
+}
+.nomi-brand-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--nomi-neutral-300);
+}
+.nomi-shop {
+  font-size: 14px;
+  color: var(--nomi-neutral-700);
+}
+.nomi-headline {
+  margin: 0;
+  font: 600 34px/1.2 var(--nomi-font-heading);
+  letter-spacing: -0.02em;
+}
+
+/* — sections — */
+.nomi-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nomi-space-6);
+}
+.nomi-section-heading {
+  margin: 0;
+  font: 600 22px/1.2 var(--nomi-font-heading);
+  letter-spacing: -0.02em;
+}
+
+/* — template cards — */
+.nomi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(226px, 1fr));
+  gap: var(--nomi-space-6);
+}
+.nomi-card {
+  background: var(--nomi-white);
+  border-radius: var(--nomi-radius-md);
+  box-shadow: var(--nomi-shadow-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.nomi-card-footer {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.nomi-card-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.nomi-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: var(--nomi-radius-md);
+  white-space: nowrap;
+}
+.nomi-badge-live {
+  color: var(--nomi-cyan-800);
+  background: var(--nomi-cyan-100);
+}
+.nomi-badge-draft {
+  color: var(--nomi-neutral-700);
+  background: var(--nomi-neutral-200);
+}
+
+/* — email previews inside the cards — */
+.nomi-preview {
+  height: 208px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fbfbfa;
+}
+.nomi-preview-title {
+  font: 600 10px var(--nomi-font-heading);
+  color: var(--nomi-neutral-800);
+}
+.nomi-line {
+  height: 4px;
+  background: var(--nomi-neutral-200);
+}
+.nomi-thumb {
+  background: var(--nomi-neutral-200);
+  border-radius: var(--nomi-radius-sm);
+  flex: none;
+}
+.nomi-preview-cta {
+  background: var(--nomi-cyan);
+  color: var(--nomi-white);
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  padding: 5px 12px;
+  border-radius: var(--nomi-radius-sm);
+  align-self: flex-start;
+}
+.nomi-micro {
+  font-size: 7px;
+  color: var(--nomi-neutral-600);
+}
+
+/* The order-confirmation preview carries the merchant's own palette, not
+   Nomi's — it stands for an AI-branded email, so it must not look like us. */
+.nomi-preview-editorial {
+  background: #f7f1e8;
+}
+
+/* — products — */
+.nomi-products-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nomi-space-4);
+}
+.nomi-product-tile {
+  width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nomi-product-thumb {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  background: var(--nomi-neutral-200);
+  border-radius: var(--nomi-radius-md);
+  box-shadow: var(--nomi-shadow-sm);
+}
+.nomi-product-title {
+  font-size: 13px;
+  color: var(--nomi-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nomi-product-price {
+  font-size: 13px;
+  color: var(--nomi-neutral-700);
+}
+.nomi-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--nomi-neutral-700);
+}
+
+/* — campaign form — */
+.nomi-campaign-section {
+  max-width: 640px;
+  gap: var(--nomi-space-4);
+}
+.nomi-form {
+  display: flex;
+  gap: var(--nomi-space-3);
+  align-items: center;
+}
+.nomi-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 11px 14px;
+  font-family: var(--nomi-font-ui);
+  font-size: 14px;
+  color: var(--nomi-ink);
+  caret-color: var(--nomi-cyan);
+  background: var(--nomi-white);
+  border: 1px solid color-mix(in srgb, var(--nomi-ink) 16%, transparent);
+  border-radius: var(--nomi-radius-md);
+}
+.nomi-input::placeholder {
+  color: color-mix(in srgb, var(--nomi-ink) 65%, transparent);
+  opacity: 1;
+}
+.nomi-input:hover {
+  border-color: color-mix(in srgb, var(--nomi-ink) 45%, transparent);
+}
+.nomi-input:focus-visible {
+  border-color: var(--nomi-cyan);
+  outline: none;
+}
+.nomi-button {
+  flex: none;
+  cursor: pointer;
+  font-family: var(--nomi-font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--nomi-paper);
+  background: var(--nomi-cyan);
+  border: 1px solid transparent;
+  border-radius: var(--nomi-radius-md);
+  padding: var(--nomi-space-2) 18px;
+  min-height: 40px;
+}
+.nomi-button:hover {
+  background: var(--nomi-cyan-600);
+}
+.nomi-button:active {
+  background: var(--nomi-cyan-700);
+}
+.nomi-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* Label the campaign input for screen readers without showing a visible
+   label — the mockup relies on the placeholder alone. */
+.nomi-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.nomi-page :focus-visible {
+  outline: 2px solid var(--nomi-cyan);
+  outline-offset: 2px;
+}

@@ -1,0 +1,20 @@
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text-body);
+  font-family: var(--font-body);
+  font-size: var(--text-body-size);
+  line-height: var(--leading-normal);
+}
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-heading);
+  margin: 0 0 var(--space-2);
+}
+a { color: var(--text-link); }
+a:hover { color: var(--nomi-cyan-800); }
+:focus-visible { outline: 2px solid var(--accent-action); outline-offset: 2px; }
+::selection { background: var(--nomi-cyan-200); }
