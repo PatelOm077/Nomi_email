@@ -1,6 +1,23 @@
 # Nomi — Decisions log
 Dated one-liners. Newest at top. Reasoning survives, not just conclusion.
 
+2026-08-17 — Sending = Nomi-owned delivery through Resend, triggered by
+  Shopify webhooks and processed from a durable job queue. Webhooks never
+  wait on Claude or the provider. This is the only architecture that also
+  covers abandoned checkout recovery.
+
+2026-08-17 — Abandoned recovery = one hour after the last checkout update,
+  only for a checkout with an email and marketing consent. An order event
+  cancels the pending job; the worker rechecks Shopify before sending.
+
+2026-08-17 — Billing = Shopify App Pricing, one flat monthly plan. The
+  legacy Billing API is not new work: price configuration belongs in the
+  Partner Dashboard when the app moves from single-merchant beta to public.
+
+2026-08-17 — Launch languages = English, Spanish, French, German, Italian,
+  Portuguese, Hindi, Japanese, Korean, and Simplified Chinese. Customer
+  locale wins for event-driven sends; the shop setting is the fallback.
+
 2026-08-17 — Generation model = Claude Sonnet 5 (claude-sonnet-5), NOT Opus.
   Output quality is merchant-grade at ~4¢/email; Opus multiplies cost for a
   bump customers won't notice. Unit economics are the whole game for a sub.

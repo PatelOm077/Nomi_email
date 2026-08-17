@@ -6,6 +6,7 @@ import {
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+import { isEmailDeliveryConfigured } from "./email-delivery/config.server";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -21,6 +22,18 @@ const shopify = shopifyApp({
   // classic native custom app with a single static admin token and no
   // OAuth at all, which this app isn't.
   distribution: AppDistribution.SingleMerchant,
+  hooks: {
+    afterAuth: async ({ session }) => {
+      await prisma.shopSettings.upsert({
+        where: { shop: session.shop },
+        create: {
+          shop: session.shop,
+          sendingEnabled: isEmailDeliveryConfigured(),
+        },
+        update: {},
+      });
+    },
+  },
   future: {
     expiringOfflineAccessTokens: true,
   },

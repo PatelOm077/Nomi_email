@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Nomi email template directions</title>
+  <style>
+    :root{--ink:#201e1d;--paper:#f3f2f2;--cyan:#00789e;--magenta:#d6006c;--line:#d9d7d4;--muted:#6b6864}
+    *{box-sizing:border-box}
+    body{margin:0;background:#e7e5e3;color:var(--ink);font-family:ui-sans-serif,system-ui,sans-serif}
+    .toolbar{position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 24px;background:rgba(243,242,242,.96);border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}
+    .brand{display:flex;align-items:center;gap:12px}.mark{display:grid;place-items:center;width:36px;height:36px;border-radius:8px;background:var(--ink);color:white}.brand b{font-family:Georgia,serif;font-size:21px}.brand span{color:var(--muted);font-size:12px}
+    .controls{display:flex;align-items:center;gap:10px}label{font-size:12px;color:var(--muted)}select,.view{border:1px solid var(--line);background:white;color:var(--ink);border-radius:7px;padding:9px 12px;font:600 12px ui-sans-serif,system-ui}.view{cursor:pointer}.view[aria-pressed=true]{background:var(--ink);color:white;border-color:var(--ink)}
+    main{max-width:1460px;margin:auto;padding:32px 24px 60px}.intro{display:flex;justify-content:space-between;gap:24px;align-items:end;margin-bottom:24px}.intro h1{margin:0;font:600 34px/1.1 Georgia,serif;letter-spacing:-.025em}.intro p{max-width:620px;margin:8px 0 0;color:var(--muted);line-height:1.55}.key{font-size:11px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start}.direction h2{margin:0 0 5px;font:600 19px/1.2 Georgia,serif}.direction>p{margin:0 0 12px;min-height:34px;color:var(--muted);font-size:12px;line-height:17px}
+    .device{overflow:hidden;padding:16px;background:#d7d4d0;border:1px solid #cac6c1;border-radius:14px;box-shadow:0 16px 40px rgba(32,30,29,.08);transition:max-width .25s}.device.phone{max-width:375px;margin:auto}.email{width:100%;min-height:690px;background:white;font-family:Georgia,serif}.email *{box-sizing:border-box}.mast{display:flex;justify-content:space-between;align-items:center;padding:25px 30px}.logo{font:bold 22px Georgia,serif;letter-spacing:-.03em}.eyebrow{font:10px Arial,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}.content{padding:38px 30px}.spot{width:30px;height:4px;background:var(--magenta);margin-bottom:17px}.email h3{margin:0 0 13px;font:600 34px/1.08 Georgia,serif;letter-spacing:-.025em}.email .lead{margin:0 0 24px;color:#56524f;font:16px/1.55 Georgia,serif}.items{border-top:1px solid var(--line)}.item{display:grid;grid-template-columns:58px 1fr auto;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line);font-size:14px}.thumb{width:58px;height:58px;background:linear-gradient(145deg,#ded9d2,#b8ada2);display:grid;place-items:center;color:white;font:600 15px Arial,sans-serif}.meta{margin-top:4px;color:var(--muted);font:10px/1.4 Arial,sans-serif}.price{white-space:nowrap}.total{display:flex;justify-content:space-between;padding:16px 0;font:600 17px Georgia,serif}.btn{display:inline-block;margin-top:24px;padding:13px 18px;background:var(--cyan);color:white;text-decoration:none;font:bold 11px Arial,sans-serif}.footer{padding:20px 30px;border-top:1px solid var(--line);color:var(--muted);font:10px/1.5 Arial,sans-serif}.footer a{color:var(--cyan)}
+    .dispatch .mast{background:var(--ink);color:white}.dispatch .eyebrow{border:1px solid var(--cyan);padding:6px 8px;color:white}.dispatch .content{padding-top:32px}.dispatch h3{font-size:31px}.dispatch .items{border:1px solid var(--line)}.dispatch .item{padding:12px}.dispatch .total{padding:13px;background:var(--paper)}
+    .field{background:var(--paper)}.field .mast{border-bottom:1px solid var(--line)}.field .eyebrow{font:italic 11px Georgia,serif;text-transform:none;letter-spacing:0}.field .content{padding-top:30px}.field h3{font-size:32px}.field .sequence{display:grid;grid-template-columns:36px 1fr;gap:12px}.field .number{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--magenta);color:white;font:bold 9px Arial,sans-serif}.field .seqbody{padding-left:13px;border-left:1px solid var(--line)}
+    .campaign .items{display:none}.campaign .content{padding-bottom:60px}.campaign .lead{font-size:17px;line-height:1.65}
+    @media(max-width:1000px){.grid{grid-template-columns:1fr}.direction{max-width:650px;margin:auto}.direction>p{min-height:0}.device{max-width:600px;margin:auto}}
+    @media(max-width:620px){.toolbar{align-items:flex-start;flex-direction:column}.controls{width:100%;flex-wrap:wrap}.intro{display:block}.intro h1{font-size:28px}.key{margin-top:12px}.email h3{font-size:29px}.content{padding:30px 22px}.mast,.footer{padding-left:22px;padding-right:22px}}
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand"><div class="mark" aria-hidden="true">➤</div><div><b>Nomi</b><br><span>Email directions</span></div></div>
+    <div class="controls"><label for="type">Email type</label><select id="type"><option value="order">Order confirmation</option><option value="return">Return / refund</option><option value="cart">Abandoned cart</option><option value="newsletter">Newsletter</option></select><button class="view" type="button" aria-pressed="false">Phone width</button></div>
+  </header>
+  <main>
+    <div class="intro"><div><h1>Three quiet, useful email systems.</h1><p>Each direction uses the same lifecycle content and Shopify-safe hierarchy. The difference is tone: editorial, operational, or personal.</p></div><div class="key">Default skin · ink / paper / cyan / one magenta mark</div></div>
+    <section class="grid">
+      <article class="direction"><h2>01. Broadsheet</h2><p>Spacious, editorial, and brand-led.</p><div class="device"><div class="email broadsheet"></div></div></article>
+      <article class="direction"><h2>02. Dispatch</h2><p>Compact modules and a strong status hierarchy.</p><div class="device"><div class="email dispatch"></div></div></article>
+      <article class="direction"><h2>03. Field notes</h2><p>A softer, sequenced note with a human cadence.</p><div class="device"><div class="email field"></div></div></article>
+    </section>
+  </main>
+  <script>
+    const copy={
+      order:{tag:'Order confirmed',title:'Thank you, Maya.',lead:'We have your order. We will send tracking as soon as it leaves us.',button:'View order',items:[['Ceramic pour-over','Sand · Qty 1','$68'],['Linen tea towel','Natural · Qty 2','$36']],total:'$104'},
+      return:{tag:'Return update',title:'Your refund is on its way.',lead:'We processed $68 for order #1042. Your bank can take several business days to post it.',button:'View return',items:[['Ceramic pour-over','Qty 1','$68']],total:'$68'},
+      cart:{tag:'Saved for you',title:'Still thinking it over?',lead:'Your selection is saved. Pick up where you left off when you are ready.',button:'Return to checkout',items:[['Ceramic pour-over','Sand · Qty 1','$68'],['Coffee measure','Brass · Qty 1','$18']],total:'$86'},
+      newsletter:{tag:'A note from Nomi',title:'Something worth making room for.',lead:'Use this space for one clear campaign idea. Say what is new, why it matters, and what the reader can do next.',button:'Shop the edit',items:[],total:''}
+    };
+    function itemsHtml(data){return `<div class="items">${data.items.map((item,i)=>`<div class="item"><div class="thumb">${i+1}</div><div>${item[0]}<div class="meta">${item[1]}</div></div><div class="price">${item[2]}</div></div>`).join('')}${data.total?`<div class="total"><span>Total</span><span>${data.total}</span></div>`:''}</div>`}
+    function base(data,kind,field){return `<div class="mast"><div class="logo">Nomi</div><div class="eyebrow">${field?'a note from us':data.tag}</div></div><div class="content ${kind==='newsletter'?'campaign':''}">${field?`<div class="sequence"><div class="number">01</div><div class="seqbody">`:`<div class="spot"></div>`}<div class="eyebrow" style="margin-bottom:11px">${data.tag}</div><h3>${data.title}</h3><p class="lead">${data.lead}</p>${itemsHtml(data)}<a class="btn" href="#">${data.button}</a>${field?'</div></div>':''}</div><div class="footer"><a href="#">Nomi</a>${kind==='cart'||kind==='newsletter'?' · <a href="#">Unsubscribe</a>':''}</div>`}
+    function render(){const kind=document.querySelector('#type').value;const data=copy[kind];document.querySelector('.broadsheet').innerHTML=base(data,kind,false);document.querySelector('.dispatch').innerHTML=base(data,kind,false);document.querySelector('.field').innerHTML=base(data,kind,true)}
+    document.querySelector('#type').addEventListener('change',render);document.querySelector('.view').addEventListener('click',event=>{const on=event.currentTarget.getAttribute('aria-pressed')==='true';event.currentTarget.setAttribute('aria-pressed',String(!on));event.currentTarget.textContent=on?'Phone width':'Desktop width';document.querySelectorAll('.device').forEach(el=>el.classList.toggle('phone',!on))});render();
+  </script>
+</body>
+</html>

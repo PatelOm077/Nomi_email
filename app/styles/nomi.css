@@ -93,6 +93,39 @@
   font: 600 34px/1.2 var(--nomi-font-heading);
   letter-spacing: -0.02em;
 }
+.nomi-delivery-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nomi-space-4);
+  padding: var(--nomi-space-4);
+  background: var(--nomi-white);
+  border-left: 3px solid var(--nomi-cyan);
+  border-radius: var(--nomi-radius-md);
+  box-shadow: var(--nomi-shadow-sm);
+}
+.nomi-delivery-strip > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+}
+.nomi-delivery-strip span {
+  color: var(--nomi-neutral-700);
+}
+.nomi-text-button {
+  flex: none;
+  padding: 0;
+  color: var(--nomi-cyan-700);
+  background: none;
+  border: 0;
+  font: 600 13px var(--nomi-font-ui);
+  cursor: pointer;
+}
+.nomi-text-button:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
 
 /* — sections — */
 .nomi-section {
@@ -104,6 +137,28 @@
   margin: 0;
   font: 600 22px/1.2 var(--nomi-font-heading);
   letter-spacing: -0.02em;
+}
+.nomi-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nomi-space-4);
+}
+.nomi-language-field {
+  display: flex;
+  align-items: center;
+  gap: var(--nomi-space-2);
+  font-size: 13px;
+  color: var(--nomi-neutral-700);
+}
+.nomi-select {
+  min-height: 36px;
+  padding: 7px 30px 7px 10px;
+  font: 14px var(--nomi-font-ui);
+  color: var(--nomi-ink);
+  background: var(--nomi-white);
+  border: 1px solid color-mix(in srgb, var(--nomi-ink) 16%, transparent);
+  border-radius: var(--nomi-radius-md);
 }
 
 /* — template cards — */
@@ -283,6 +338,27 @@
 .nomi-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.nomi-form-error {
+  margin: 0;
+  color: #9f1239;
+  font-size: 13px;
+}
+.nomi-campaign-preview {
+  overflow: hidden;
+  border-radius: var(--nomi-radius-md);
+  box-shadow: var(--nomi-shadow-sm);
+}
+
+@media (max-width: 560px) {
+  .nomi-section-title-row,
+  .nomi-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .nomi-language-field {
+    justify-content: space-between;
+  }
 }
 /* Label the campaign input for screen readers without showing a visible
    label — the mockup relies on the placeholder alone. */

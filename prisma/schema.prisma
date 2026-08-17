@@ -32,3 +32,29 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model ShopSettings {
+  shop           String   @id
+  sendingEnabled Boolean  @default(false)
+  language       String   @default("en")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model EmailJob {
+  id                String    @id @default(cuid())
+  webhookId         String    @unique
+  shop              String
+  topic             String
+  payload           String
+  status            String    @default("pending")
+  attempts          Int       @default(0)
+  availableAt       DateTime  @default(now())
+  lastError         String?
+  providerMessageId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  sentAt            DateTime?
+
+  @@index([status, availableAt])
+}

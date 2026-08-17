@@ -1,0 +1,80 @@
+{% assign email_type = 'order_confirmation' %}
+{% assign brand_ink = '#201e1d' %}
+{% assign brand_paper = '#f3f2f2' %}
+{% assign brand_cyan = '#00789e' %}
+{% assign brand_magenta = '#d6006c' %}
+{% assign brand_line = '#d9d7d4' %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ shop.name }}</title>
+  <style>
+    @media only screen and (max-width: 620px) {
+      .shell { width: 100% !important; }
+      .pad { padding-left: 22px !important; padding-right: 22px !important; }
+      .headline { font-size: 31px !important; line-height: 36px !important; }
+      .stack { display:block !important; width:100% !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background:#e7e5e3;color:{{ brand_ink }};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#e7e5e3;">
+    <tr><td align="center" style="padding:24px 10px;">
+      <table role="presentation" class="shell" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;">
+        <tr>
+          <td class="pad" bgcolor="{{ brand_ink }}" style="padding:30px 40px;background:{{ brand_ink }};">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="middle">
+                  {% if shop.email_logo_url %}<img src="{{ shop.email_logo_url }}" alt="{{ shop.name }}" width="{{ shop.email_logo_width }}" height="60" style="display:block;max-width:170px;height:auto;border:0;background:#ffffff;padding:7px;">{% else %}<a href="{{ shop.url }}" style="font-family:'Source Serif 4',Georgia,serif;font-size:27px;line-height:31px;font-weight:600;letter-spacing:-.02em;color:#ffffff;text-decoration:none;">{{ shop.name }}</a>{% endif %}
+                </td>
+                <td align="right" valign="middle"><span style="display:inline-block;border:1px solid {{ brand_cyan }};color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:9px;line-height:13px;letter-spacing:.14em;text-transform:uppercase;padding:7px 9px;">{% case email_type %}{% when 'order_confirmation' %}Confirmed{% when 'return_refund' %}Refunded{% when 'abandoned_cart' %}Saved{% else %}Edition 01{% endcase %}</span></td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        {% case email_type %}
+          {% when 'order_confirmation' %}
+            <tr><td class="pad" style="padding:42px 40px 28px;"><p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:.16em;text-transform:uppercase;color:{{ brand_cyan }};">Dispatch note {{ name }}</p><h1 class="headline" style="margin:0 0 14px;font-family:'Source Serif 4',Georgia,serif;font-size:38px;line-height:43px;font-weight:600;color:{{ brand_ink }};">Your order is in motion.</h1><p style="margin:0;font-family:'Source Serif 4',Georgia,serif;font-size:16px;line-height:25px;color:#56524f;">{% if customer.first_name %}{{ customer.first_name }}, we{% else %}We{% endif %} have the details below. We will send the next update when your order ships.</p></td></tr>
+            <tr><td class="pad" style="padding:0 40px 30px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid {{ brand_line }};">
+                <tr><td colspan="3" style="padding:13px 16px;background:{{ brand_paper }};font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:14px;letter-spacing:.15em;text-transform:uppercase;color:#6b6864;">Order contents</td></tr>
+                {% for line in line_items %}
+                  <tr>
+                    <td width="62" style="padding:16px 0 16px 16px;border-top:1px solid {{ brand_line }};">{% if line.image %}<img src="{{ line.image | image_url: width: 124, height: 124 }}" alt="{{ line.title }}" width="62" height="62" style="display:block;width:62px;height:62px;object-fit:cover;border:0;">{% endif %}</td>
+                    <td style="padding:16px 12px;border-top:1px solid {{ brand_line }};font-family:'Source Serif 4',Georgia,serif;font-size:15px;line-height:21px;color:{{ brand_ink }};">{{ line.product.title | default: line.title }}<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#6b6864;padding-top:3px;">Qty {{ line.quantity }}{% unless line.variant.title == 'Default Title' %} · {{ line.variant.title }}{% endunless %}</div></td>
+                    <td align="right" style="padding:16px;border-top:1px solid {{ brand_line }};font-family:'Source Serif 4',Georgia,serif;font-size:15px;line-height:21px;color:{{ brand_ink }};white-space:nowrap;">{{ line.final_line_price | money }}</td>
+                  </tr>
+                {% endfor %}
+                <tr><td colspan="2" style="padding:16px;border-top:2px solid {{ brand_ink }};font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;color:{{ brand_ink }};">Total</td><td align="right" style="padding:12px 16px;border-top:2px solid {{ brand_ink }};font-family:'Source Serif 4',Georgia,serif;font-size:21px;line-height:27px;font-weight:600;color:{{ brand_ink }};">{{ total_price | money_with_currency }}</td></tr>
+              </table>
+            </td></tr>
+            <tr><td class="pad" style="padding:0 40px 42px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>{% if shipping_address %}<td class="stack" width="58%" valign="top" style="padding:20px;background:{{ brand_paper }};font-family:'Source Serif 4',Georgia,serif;font-size:14px;line-height:22px;color:#56524f;"><strong style="color:{{ brand_ink }};">Destination</strong><br>{{ shipping_address | format_address }}</td><td class="stack" width="16" style="width:16px;">&nbsp;</td>{% endif %}<td class="stack" valign="middle" align="center" style="background:{{ brand_cyan }};"><a href="{{ order_status_url }}" style="display:block;padding:22px 14px;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:17px;font-weight:bold;">View order →</a></td></tr></table>
+            </td></tr>
+
+          {% when 'return_refund' %}
+            <tr><td class="pad" style="padding:42px 40px 24px;"><p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:.16em;text-transform:uppercase;color:{{ brand_cyan }};">Return update {{ name }}</p><h1 class="headline" style="margin:0 0 14px;font-family:'Source Serif 4',Georgia,serif;font-size:38px;line-height:43px;font-weight:600;color:{{ brand_ink }};">Refund processed.</h1><p style="margin:0;font-family:'Source Serif 4',Georgia,serif;font-size:16px;line-height:25px;color:#56524f;">We sent {{ amount | money_with_currency }} back to your original payment method. Your bank controls when it appears.</p></td></tr>
+            <tr><td class="pad" style="padding:0 40px 28px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid {{ brand_line }};"><tr><td colspan="2" style="padding:13px 16px;background:{{ brand_paper }};font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:14px;letter-spacing:.15em;text-transform:uppercase;color:#6b6864;">Returned items</td></tr>{% for refund_line in refund_line_items %}{% assign line = refund_line.line_item %}<tr><td style="padding:16px;border-top:1px solid {{ brand_line }};font-family:'Source Serif 4',Georgia,serif;font-size:15px;line-height:21px;color:{{ brand_ink }};">{{ line.title }}<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#6b6864;">Qty {{ refund_line.quantity }}</div></td><td align="right" style="padding:16px;border-top:1px solid {{ brand_line }};font-family:'Source Serif 4',Georgia,serif;font-size:15px;line-height:21px;color:{{ brand_ink }};">{{ line.price | times: refund_line.quantity | money }}</td></tr>{% endfor %}</table></td></tr>
+            <tr><td class="pad" style="padding:0 40px 44px;">{% if customer_order_url %}<a href="{{ customer_order_url }}" style="display:inline-block;background:{{ brand_cyan }};color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:bold;padding:14px 20px;">View return →</a>{% elsif order_status_url %}<a href="{{ order_status_url }}" style="display:inline-block;background:{{ brand_cyan }};color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:bold;padding:14px 20px;">View order →</a>{% endif %}</td></tr>
+
+          {% when 'abandoned_cart' %}
+            {% assign recovery_url = abandoned_checkout.url | default: abandoned_visit.url %}
+            <tr><td class="pad" style="padding:42px 40px 24px;"><p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:.16em;text-transform:uppercase;color:{{ brand_magenta }};">Cart status · saved</p><h1 class="headline" style="margin:0 0 14px;font-family:'Source Serif 4',Georgia,serif;font-size:38px;line-height:43px;font-weight:600;color:{{ brand_ink }};">Ready when you are.</h1><p style="margin:0;font-family:'Source Serif 4',Georgia,serif;font-size:16px;line-height:25px;color:#56524f;">The items below are still in your cart. Return to checkout if they are still right for you.</p></td></tr>
+            <tr><td class="pad" style="padding:0 40px 28px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid {{ brand_line }};"><tr><td colspan="2" style="padding:13px 16px;background:{{ brand_paper }};font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:14px;letter-spacing:.15em;text-transform:uppercase;color:#6b6864;">Your selection</td></tr>{% if abandoned_checkout %}{% for line in abandoned_checkout.line_items %}<tr><td width="64" style="padding:14px 0 14px 14px;border-top:1px solid {{ brand_line }};">{% if line.image_url %}<img src="{{ line.image_url }}" alt="{{ line.product_title }}" width="64" height="64" style="display:block;width:64px;height:64px;object-fit:cover;border:0;">{% endif %}</td><td style="padding:14px;border-top:1px solid {{ brand_line }};font-family:'Source Serif 4',Georgia,serif;font-size:15px;line-height:21px;color:{{ brand_ink }};">{{ line.product_title }}<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#6b6864;">{{ line.variant_title }} · Qty {{ line.quantity }}</div></td></tr>{% endfor %}{% else %}{% for line in abandoned_visit.products_added_to_cart %}<tr><td width="64" style="padding:14px 0 14px 14px;border-top:1px solid {{ brand_line }};">{% if line.image_url %}<img src="{{ line.image_url }}" alt="{{ line.title }}" width="64" height="64" style="display:block;width:64px;height:64px;object-fit:cover;border:0;">{% endif %}</td><td style="padding:14px;border-top:1px solid {{ brand_line }};font-family:'Source Serif 4',Georgia,serif;font-size:15px;line-height:21px;color:{{ brand_ink }};">{{ line.title }}<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#6b6864;">{{ line.variant_title }} · Qty {{ line.quantity }}</div></td></tr>{% endfor %}{% endif %}</table></td></tr>
+            <tr><td class="pad" style="padding:0 40px 44px;"><a href="{{ recovery_url }}" style="display:inline-block;background:{{ brand_cyan }};color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:bold;padding:14px 20px;">Continue checkout →</a></td></tr>
+
+          {% else %}
+            <tr><td class="pad" style="padding:42px 40px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="6" style="width:6px;background:{{ brand_magenta }};font-size:0;line-height:0;">&nbsp;</td><td style="padding:8px 0 8px 22px;"><p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:.16em;text-transform:uppercase;color:{{ brand_cyan }};">New from {{ shop.name }}</p><h1 class="headline" style="margin:0;font-family:'Source Serif 4',Georgia,serif;font-size:40px;line-height:45px;font-weight:600;color:{{ brand_ink }};">One story. One clear next step.</h1></td></tr></table></td></tr>
+            <tr><td class="pad" style="padding:24px 40px 44px;"><p style="margin:0 0 24px;font-family:'Source Serif 4',Georgia,serif;font-size:17px;line-height:27px;color:#56524f;">Lead with the useful detail. Keep the campaign focused, give the reader enough context, then name the action.</p><a href="{{ shop.url }}" style="display:inline-block;background:{{ brand_cyan }};color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:bold;padding:14px 20px;">See what is new →</a></td></tr>
+        {% endcase %}
+
+        <tr><td class="pad" style="padding:22px 40px;border-top:1px solid {{ brand_line }};font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:17px;color:#6b6864;"><a href="{{ shop.url }}" style="color:{{ brand_cyan }};text-decoration:underline;">{{ shop.name }}</a>{% if email_type == 'abandoned_cart' or email_type == 'newsletter' %}<span style="padding:0 7px;">·</span><a href="{{ unsubscribe_url }}" style="color:{{ brand_cyan }};text-decoration:underline;">Unsubscribe</a>{{ open_tracking }}{% endif %}</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
