@@ -8,6 +8,11 @@ import { generateAbandonedCartEmail } from "../email-engine/generate-abandoned-c
 import { EMAIL_LANGUAGES, type EmailLanguage } from "../email-engine/types";
 import { sendEmail } from "./provider.server";
 
+// Kept in sync with the same set in queue.server.ts — a job can sit
+// pending long enough for the merchant to flip sendReceiptEmails off
+// after it was queued, so the worker re-checks at send time too.
+const DUPLICATE_RISK_TOPICS = new Set(["ORDERS_CREATE", "REFUNDS_CREATE"]);
+
 const EMAIL_ORDER_QUERY = `#graphql
   query EmailOrder($id: ID!) {
     shop { name }
@@ -362,6 +367,11 @@ export async function processPendingEmailJobs(limit = 10) {
       const settings = await db.shopSettings.findUnique({ where: { shop: job.shop } });
       if (!settings?.sendingEnabled) {
         await db.emailJob.update({ where: { id: job.id }, data: { status: "skipped", lastError: "Sending disabled for shop." } });
+        results.skipped += 1;
+        continue;
+      }
+      if (DUPLICATE_RISK_TOPICS.has(job.topic) && !settings.sendReceiptEmails) {
+        await db.emailJob.update({ where: { id: job.id }, data: { status: "skipped", lastError: "Receipt-email sending not enabled for shop." } });
         results.skipped += 1;
         continue;
       }

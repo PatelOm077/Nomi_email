@@ -200,6 +200,18 @@
   color: var(--nomi-neutral-700);
   background: var(--nomi-neutral-200);
 }
+.nomi-badge-warning {
+  color: var(--nomi-magenta);
+  background: color-mix(in srgb, var(--nomi-magenta) 12%, var(--nomi-white));
+}
+
+/* — duplicate-mail warning strip: the one deliberate magenta accent — */
+.nomi-delivery-strip-warning {
+  border-left-color: var(--nomi-magenta);
+}
+.nomi-text-button-warning {
+  color: var(--nomi-magenta);
+}
 
 /* — email previews inside the cards — */
 .nomi-preview {

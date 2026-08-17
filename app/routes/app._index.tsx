@@ -495,6 +495,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     delivery: {
       providerConfigured,
       sendingEnabled: settings.sendingEnabled,
+      sendReceiptEmails: settings.sendReceiptEmails,
       language: settings.language,
       pendingJobs: await db.emailJob.count({
         where: { shop: session.shop, status: "pending" },
@@ -633,6 +634,7 @@ type GenerationRequest =
 type DashboardActionRequest =
   | GenerationRequest
   | { kind: "set-sending"; enabled: boolean }
+  | { kind: "set-receipt-sending"; enabled: boolean }
   | { kind: "set-language"; language: EmailLanguage };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -654,6 +656,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         where: { shop: session.shop },
         create: { shop: session.shop, sendingEnabled: parsed.enabled },
         update: { sendingEnabled: parsed.enabled },
+      });
+      return { deliveryUpdated: true };
+    }
+    if (parsed.kind === "set-receipt-sending") {
+      if (parsed.enabled && !isEmailDeliveryConfigured()) {
+        return { error: "Configure the email provider before enabling sends." };
+      }
+      await db.shopSettings.upsert({
+        where: { shop: session.shop },
+        create: { shop: session.shop, sendReceiptEmails: parsed.enabled },
+        update: { sendReceiptEmails: parsed.enabled },
       });
       return { deliveryUpdated: true };
     }
@@ -1029,6 +1042,51 @@ export default function Index() {
             </button>
           ) : null}
         </section>
+
+        {delivery.sendingEnabled ? (
+          <section
+            className="nomi-delivery-strip nomi-delivery-strip-warning"
+            aria-label="Order and refund receipt sending"
+          >
+            <div>
+              <strong>
+                {delivery.sendReceiptEmails
+                  ? "Order & refund receipts: on"
+                  : "Order & refund receipts: off"}
+              </strong>
+              <span>
+                Shopify has no setting to disable its own order-confirmation
+                or refund emails, on any plan — turning this on means every
+                customer gets two receipts for the same order or refund.
+                Shipping updates, cart recovery, and review requests are not
+                affected by this switch.
+              </span>
+            </div>
+            <span
+              className={`nomi-badge ${delivery.sendReceiptEmails ? "nomi-badge-warning" : "nomi-badge-draft"}`}
+            >
+              {delivery.sendReceiptEmails ? "On" : "Off"}
+            </span>
+            <button
+              className="nomi-text-button nomi-text-button-warning"
+              type="button"
+              disabled={deliveryFetcher.state !== "idle"}
+              onClick={() =>
+                deliveryFetcher.submit(
+                  {
+                    payload: JSON.stringify({
+                      kind: "set-receipt-sending",
+                      enabled: !delivery.sendReceiptEmails,
+                    }),
+                  },
+                  { method: "POST" },
+                )
+              }
+            >
+              {delivery.sendReceiptEmails ? "Turn off" : "Send duplicates anyway"}
+            </button>
+          </section>
+        ) : null}
 
         <section className="nomi-section">
           <div className="nomi-section-title-row">

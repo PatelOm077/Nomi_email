@@ -1,6 +1,31 @@
 # Nomi — Decisions log
 Dated one-liners. Newest at top. Reasoning survives, not just conclusion.
 
+2026-08-17 — Order confirmation and refund confirmation cannot be Nomi's
+  own automatic send on a live store, on any plan: Shopify has no setting
+  or API to globally disable its native order-confirmation email (no
+  toggle exists at all — it's the legal purchase receipt) or its native
+  refund email (suppressible only one refund at a time, via a checkbox a
+  human clicks during a manual refund, not programmatically). Confirmed
+  by research, not assumption. Shipping is different: "out for delivery"
+  and "delivered" notifications have a real Settings > Notifications
+  toggle, and the initial shipping-confirmation email can be suppressed
+  per-fulfillment. Net effect: enabling Nomi's webhook sends for
+  order-confirmation or refund-confirmation on a real store guarantees
+  the customer gets two receipts for the same event, with no fix
+  available. Needs a product decision — see conversation.
+
+2026-08-17 — Real storefront brand extraction (actual logo/colors, not
+  AI-invented) is not just unfinished, it's blocked: `Shop.brand` is not
+  a field on the Admin GraphQL `Shop` type (confirmed against the live
+  2026-07 schema — "Cannot query field 'brand' on type 'Shop'"). The only
+  way to read a merchant's real logo/colors is the legacy REST Asset
+  resource against a theme's `settings_data.json`, which sits behind the
+  protected `themes` access scope — same class of blocker as
+  `read_all_orders`: requires Shopify's app-review approval, not
+  something the CLI can self-grant on a dev store. AI-invented brand skin
+  per shop stays the design until that scope is worth pursuing.
+
 2026-08-17 — Sending = Nomi-owned delivery through Resend, triggered by
   Shopify webhooks and processed from a durable job queue. Webhooks never
   wait on Claude or the provider. This is the only architecture that also

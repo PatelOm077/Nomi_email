@@ -36,6 +36,13 @@ model Session {
 model ShopSettings {
   shop           String   @id
   sendingEnabled Boolean  @default(false)
+  // Separate, narrower opt-in for the two event types that will always
+  // duplicate a Shopify-native customer email (order confirmation, refund
+  // confirmation) with no way to suppress the native side — see
+  // DECISIONS.md, 2026-08-17. Off by default even when sendingEnabled is
+  // on; shipping-update, abandoned-cart, and review-request aren't gated
+  // by this flag because they don't have that duplication problem.
+  sendReceiptEmails Boolean  @default(false)
   language       String   @default("en")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

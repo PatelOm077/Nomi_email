@@ -8,6 +8,13 @@ type EnqueueInput = {
   payload: Record<string, unknown>;
 };
 
+// Order confirmation and refund confirmation always duplicate Shopify's
+// own native customer email for the same event — there's no store setting
+// or API that suppresses the native side (see DECISIONS.md, 2026-08-17).
+// These two topics need the narrower sendReceiptEmails opt-in on top of
+// the main sendingEnabled switch; every other topic only needs the latter.
+const DUPLICATE_RISK_TOPICS = new Set(["ORDERS_CREATE", "REFUNDS_CREATE"]);
+
 export async function enqueueEmailJob({
   webhookId,
   shop,
@@ -17,6 +24,9 @@ export async function enqueueEmailJob({
   const settings = await db.shopSettings.findUnique({ where: { shop } });
   if (!settings?.sendingEnabled) return "disabled";
 
+  // Runs regardless of sendReceiptEmails below: a completed order should
+  // cancel its pending cart-recovery job whether or not Nomi is also
+  // sending its own (duplicate-risk) order-confirmation email for it.
   if (topic === "ORDERS_CREATE" && typeof payload.checkout_token === "string") {
     await db.emailJob.updateMany({
       where: {
@@ -62,6 +72,10 @@ export async function enqueueEmailJob({
       },
     });
     return "queued";
+  }
+
+  if (DUPLICATE_RISK_TOPICS.has(topic) && !settings.sendReceiptEmails) {
+    return "disabled";
   }
 
   try {
