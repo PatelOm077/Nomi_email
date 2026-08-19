@@ -33,5 +33,6 @@ export async function generateOrderConfirmationEmail(
     ORDER_CONFIRMATION_SKELETON_PROMPT,
     buildOrderMessage(order),
     order.language,
+    order.tone,
   );
 }

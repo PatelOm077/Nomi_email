@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { createHash } from "node:crypto";
+import { useEffect, useState } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -8,23 +9,28 @@ import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { isEmailDeliveryConfigured } from "../email-delivery/config.server";
+import { getEmailDeliveryConfig, isEmailDeliveryConfigured } from "../email-delivery/config.server";
 import { generateOrderConfirmationEmail } from "../email-engine/generate-order-confirmation-email";
 import { generateAbandonedCartEmail } from "../email-engine/generate-abandoned-cart-email";
 import { generateShippingUpdateEmail } from "../email-engine/generate-shipping-update-email";
 import { generateReviewRequestEmail } from "../email-engine/generate-review-request-email";
 import { generateRefundConfirmationEmail } from "../email-engine/generate-refund-confirmation-email";
 import { generateNewsletterEmail } from "../email-engine/generate-newsletter-email";
+import { generateLifecycleEmail } from "../email-engine/generate-lifecycle-email";
+import { EMAIL_GENERATION_PAUSED } from "../email-engine/generation-status";
 import type {
   AbandonedCartRecovery,
   EmailLanguage,
+  EmailTone,
+  LifecycleEmail,
+  LifecycleEmailId,
   NewsletterCampaign,
   OrderConfirmationOrder,
   RefundConfirmation,
   ReviewRequest,
   ShippingUpdate,
 } from "../email-engine/types";
-import { EMAIL_LANGUAGES } from "../email-engine/types";
+import { EMAIL_LANGUAGES, EMAIL_TONES } from "../email-engine/types";
 
 // One round trip: shop identity, the active theme's name (the closest thing
 // to a "brand asset" the Admin API exposes — there's no logo/colors field,
@@ -485,6 +491,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     shopName: data.shop.name,
+    shopDomain: session.shop,
     themeName: data.themes.nodes[0]?.name ?? null,
     products,
     order,
@@ -497,6 +504,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       sendingEnabled: settings.sendingEnabled,
       sendReceiptEmails: settings.sendReceiptEmails,
       language: settings.language,
+      tone: settings.tone,
+      // The real configured sender identity, shown in the flow preview's
+      // "From" line once a provider is set up. There's no per-shop sending
+      // subdomain — one verified address serves every merchant — so this
+      // is intentionally the same for all shops, not a fabricated one.
+      fromAddress: providerConfigured
+        ? (() => {
+            const { fromName, fromEmail } = getEmailDeliveryConfig();
+            return `${fromName} <${fromEmail}>`;
+          })()
+        : null,
       pendingJobs: await db.emailJob.count({
         where: { shop: session.shop, status: "pending" },
       }),
@@ -509,6 +527,7 @@ type DashboardCart = Awaited<ReturnType<typeof loader>>["cart"];
 type DashboardShippingUpdate = Awaited<ReturnType<typeof loader>>["shippingUpdate"];
 type DashboardReviewRequest = Awaited<ReturnType<typeof loader>>["reviewRequest"];
 type DashboardRefund = Awaited<ReturnType<typeof loader>>["refund"];
+type DashboardProduct = Awaited<ReturnType<typeof loader>>["products"][number];
 
 // Maps the Shopify-shaped order the loader already fetched onto the
 // engine's platform-neutral input. This mapping — not the engine itself —
@@ -517,10 +536,12 @@ function toEngineOrder(
   shopName: string,
   order: NonNullable<DashboardOrder>,
   language: EmailLanguage,
+  tone: EmailTone,
 ): OrderConfirmationOrder {
   return {
     shopName,
     language,
+    tone,
     customerFirstName: order.customerFirstName,
     orderNumber: order.name,
     total: order.total,
@@ -539,10 +560,12 @@ function toEngineCart(
   shopName: string,
   cart: NonNullable<DashboardCart>,
   language: EmailLanguage,
+  tone: EmailTone,
 ): AbandonedCartRecovery {
   return {
     shopName,
     language,
+    tone,
     customerFirstName: cart.customerFirstName,
     recoveryUrl: cart.recoveryUrl,
     total: cart.total,
@@ -560,10 +583,12 @@ function toEngineShippingUpdate(
   shopName: string,
   update: NonNullable<DashboardShippingUpdate>,
   language: EmailLanguage,
+  tone: EmailTone,
 ): ShippingUpdate {
   return {
     shopName,
     language,
+    tone,
     customerFirstName: update.customerFirstName,
     orderNumber: update.orderNumber,
     fulfillmentStatus: update.fulfillmentStatus,
@@ -584,10 +609,12 @@ function toEngineReviewRequest(
   shopName: string,
   request: NonNullable<DashboardReviewRequest>,
   language: EmailLanguage,
+  tone: EmailTone,
 ): ReviewRequest {
   return {
     shopName,
     language,
+    tone,
     customerFirstName: request.customerFirstName,
     orderNumber: request.orderNumber,
     reviewUrl: request.reviewUrl,
@@ -603,10 +630,12 @@ function toEngineRefund(
   shopName: string,
   refund: NonNullable<DashboardRefund>,
   language: EmailLanguage,
+  tone: EmailTone,
 ): RefundConfirmation {
   return {
     shopName,
     language,
+    tone,
     customerFirstName: refund.customerFirstName,
     orderNumber: refund.orderNumber,
     refundedTotal: refund.total,
@@ -624,18 +653,29 @@ function toEngineRefund(
 // client only needs one fetcher endpoint per card and each branch stays a
 // thin call into the platform-neutral engine.
 type GenerationRequest =
-  | { kind: "order-confirmation"; shopName: string; language: EmailLanguage; order: NonNullable<DashboardOrder> }
-  | { kind: "abandoned-cart"; shopName: string; language: EmailLanguage; cart: NonNullable<DashboardCart> }
-  | { kind: "shipping-update"; shopName: string; language: EmailLanguage; update: NonNullable<DashboardShippingUpdate> }
-  | { kind: "review-request"; shopName: string; language: EmailLanguage; request: NonNullable<DashboardReviewRequest> }
-  | { kind: "refund-confirmation"; shopName: string; language: EmailLanguage; refund: NonNullable<DashboardRefund> }
-  | { kind: "newsletter"; shopName: string; language: EmailLanguage; prompt: string; products: NewsletterCampaign["products"] };
+  | { kind: "order-confirmation"; shopName: string; language: EmailLanguage; tone: EmailTone; order: NonNullable<DashboardOrder> }
+  | { kind: "abandoned-cart"; shopName: string; language: EmailLanguage; tone: EmailTone; cart: NonNullable<DashboardCart> }
+  | { kind: "shipping-update"; shopName: string; language: EmailLanguage; tone: EmailTone; update: NonNullable<DashboardShippingUpdate> }
+  | { kind: "review-request"; shopName: string; language: EmailLanguage; tone: EmailTone; request: NonNullable<DashboardReviewRequest> }
+  | { kind: "refund-confirmation"; shopName: string; language: EmailLanguage; tone: EmailTone; refund: NonNullable<DashboardRefund> }
+  | { kind: "newsletter"; shopName: string; language: EmailLanguage; tone: EmailTone; prompt: string; products: NewsletterCampaign["products"] }
+  | { kind: "lifecycle-emails"; emails: LifecycleEmail[] };
 
 type DashboardActionRequest =
   | GenerationRequest
   | { kind: "set-sending"; enabled: boolean }
   | { kind: "set-receipt-sending"; enabled: boolean }
-  | { kind: "set-language"; language: EmailLanguage };
+  | { kind: "set-language"; language: EmailLanguage }
+  | { kind: "set-tone"; tone: EmailTone };
+
+// The dashboard reloads its loader data (and re-fires generation) on every
+// page load, so identical order/cart/etc. data would otherwise re-call
+// Claude every single reload. Keyed on shop + the exact generation request,
+// so any real change in the underlying record (new total, new refund, a
+// different language) still misses and regenerates. Process-lifetime only
+// on purpose — this is the dashboard preview cache, not the transactional
+// send path, which already has its own DB-backed idempotency.
+const previewCache = new Map<string, string>();
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -681,32 +721,76 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
       return { deliveryUpdated: true };
     }
+    if (parsed.kind === "set-tone") {
+      if (!EMAIL_TONES.some(({ code }) => code === parsed.tone)) {
+        return { error: "Unsupported email tone." };
+      }
+      await db.shopSettings.upsert({
+        where: { shop: session.shop },
+        create: { shop: session.shop, tone: parsed.tone },
+        update: { tone: parsed.tone },
+      });
+      return { deliveryUpdated: true };
+    }
+
+    if (EMAIL_GENERATION_PAUSED) {
+      return { error: "Email generation is paused until you choose to start it." };
+    }
+
+    if (parsed.kind === "lifecycle-emails") {
+      if (!Array.isArray(parsed.emails) || parsed.emails.length < 1 || parsed.emails.length > 13) {
+        return { error: "Choose between 1 and 13 lifecycle emails." };
+      }
+
+      const generatedEntries = await Promise.all(
+        parsed.emails.map(async (email) => {
+          if (!EMAIL_LANGUAGES.some(({ code }) => code === email.language)) {
+            throw new Error(`Unsupported email language: ${email.language}`);
+          }
+          const emailCacheKey = createHash("sha256")
+            .update(`${session.shop}:lifecycle:${JSON.stringify(email)}`)
+            .digest("hex");
+          const cachedEmail = previewCache.get(emailCacheKey);
+          const html = cachedEmail ?? (await generateLifecycleEmail(email));
+          if (!cachedEmail) previewCache.set(emailCacheKey, html);
+          return [email.id, html] as const;
+        }),
+      );
+
+      return { generatedEmails: Object.fromEntries(generatedEntries) };
+    }
+
+    const cacheKey = createHash("sha256")
+      .update(`${session.shop}:${JSON.stringify(parsed)}`)
+      .digest("hex");
+    const cachedHtml = previewCache.get(cacheKey);
+    if (cachedHtml) return { html: cachedHtml };
 
     let html: string;
     switch (parsed.kind) {
       case "order-confirmation":
         html = await generateOrderConfirmationEmail(
-          toEngineOrder(parsed.shopName, parsed.order, parsed.language),
+          toEngineOrder(parsed.shopName, parsed.order, parsed.language, parsed.tone),
         );
         break;
       case "abandoned-cart":
         html = await generateAbandonedCartEmail(
-          toEngineCart(parsed.shopName, parsed.cart, parsed.language),
+          toEngineCart(parsed.shopName, parsed.cart, parsed.language, parsed.tone),
         );
         break;
       case "shipping-update":
         html = await generateShippingUpdateEmail(
-          toEngineShippingUpdate(parsed.shopName, parsed.update, parsed.language),
+          toEngineShippingUpdate(parsed.shopName, parsed.update, parsed.language, parsed.tone),
         );
         break;
       case "review-request":
         html = await generateReviewRequestEmail(
-          toEngineReviewRequest(parsed.shopName, parsed.request, parsed.language),
+          toEngineReviewRequest(parsed.shopName, parsed.request, parsed.language, parsed.tone),
         );
         break;
       case "refund-confirmation":
         html = await generateRefundConfirmationEmail(
-          toEngineRefund(parsed.shopName, parsed.refund, parsed.language),
+          toEngineRefund(parsed.shopName, parsed.refund, parsed.language, parsed.tone),
         );
         break;
       case "newsletter": {
@@ -717,12 +801,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         html = await generateNewsletterEmail({
           shopName: parsed.shopName,
           language: parsed.language,
+          tone: parsed.tone,
           prompt,
           products: parsed.products,
         });
         break;
       }
     }
+    previewCache.set(cacheKey, html);
     return { html };
   } catch (error) {
     console.error("Email generation failed:", error);
@@ -730,11 +816,60 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
-// Revenue headline stays dummy until we're actually attributing sales to
-// sent emails — that's a later milestone, not a data-fetching one.
-const REVENUE = "$1,284";
+// v3, not v2: the flow itself changed shape (a real tone choice replaced a
+// purely decorative step), so a shop that already finished the old five-step
+// version sees the new one once rather than staying silently on record as
+// "onboarded" for a flow it never saw.
+const ONBOARDING_VERSION = "v3";
 
-type TemplateStatus = "Live" | "Draft";
+const ONBOARDING_RAIL = ["Say hello", "Look around", "Good timing", "Your tone", "All set"] as const;
+
+// The two purely informational steps auto-advance after this long; "Say
+// hello" (0) and "Your tone" (3) wait for the merchant instead — see the
+// click handlers in NomiOnboarding.
+const ONBOARDING_AUTO_ADVANCE_MS: Partial<Record<number, number>> = {
+  1: 3000,
+  2: 3400,
+};
+
+function onboardingStepCopy(
+  step: number,
+  shopName: string,
+  emailsReady: boolean,
+): { title: string; detail: string } {
+  switch (step) {
+    case 0:
+      return {
+        title: "Here's the store we're setting up.",
+        detail: "You're already connected inside Shopify — this is the link Nomi reads from.",
+      };
+    case 1:
+      return {
+        title: `Found you, ${shopName}.`,
+        detail: "Your products are already loaded here, nothing to upload.",
+      };
+    case 2:
+      return {
+        title: "We'll know exactly when to say something.",
+        detail: "Each customer action gets the right email, at the right distance behind it.",
+      };
+    case 3:
+      return {
+        title: "What's your tone?",
+        detail: "Pick how Nomi should sound in every email it writes for you.",
+      };
+    default:
+      return emailsReady
+        ? {
+            title: "Your email system is ready.",
+            detail: "Thirteen emails across five journeys, written and waiting for you. Nothing sends until you say so.",
+          }
+        : {
+            title: "Writing your emails.",
+            detail: "Using your real products and the tone you picked.",
+          };
+  }
+}
 
 function resolveDashboardLanguage(value: string): EmailLanguage {
   return EMAIL_LANGUAGES.some(({ code }) => code === value)
@@ -742,124 +877,281 @@ function resolveDashboardLanguage(value: string): EmailLanguage {
     : "en";
 }
 
+function resolveDashboardTone(value: string): EmailTone {
+  return EMAIL_TONES.some(({ code }) => code === value)
+    ? (value as EmailTone)
+    : "warm-plain";
+}
+
+type FlowTemplate = {
+  id: string;
+  flowId: "orders" | "delivery" | "recovery" | "campaigns";
+  name: string;
+  subject: string;
+  previewText: string;
+  timing: string;
+  available: boolean;
+  unavailableLabel: string;
+  generatedHtml: string | null;
+  isGenerating: boolean;
+  error: string | null;
+  onGenerate: () => void;
+  preview: React.ReactNode;
+};
+
+type ReferenceFlowId = "welcome" | "interest" | "cart" | "care" | "winback";
+
+type ReferenceFlowTemplate = {
+  id: LifecycleEmailId;
+  flowId: ReferenceFlowId;
+  name: string;
+  subject: string;
+  previewText: string;
+  timing: string;
+  generatedHtml: string | null;
+  isGenerating: boolean;
+  error: string | null;
+  onGenerate: () => void;
+};
+
 export default function Index() {
-  const { shopName, themeName, products, order, cart, shippingUpdate, reviewRequest, refund, delivery } =
+  const { shopName, shopDomain, products, order, cart, shippingUpdate, reviewRequest, refund, delivery } =
     useLoaderData<typeof loader>();
-  const [campaign, setCampaign] = useState("");
+  const [campaign] = useState("");
   const [language, setLanguage] = useState<EmailLanguage>(
     resolveDashboardLanguage(delivery.language),
   );
+  const [tone, setTone] = useState<EmailTone>(resolveDashboardTone(delivery.tone));
+  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<LifecycleEmailId>("welcome-1");
+  const [expandedFlowId, setExpandedFlowId] = useState<ReferenceFlowId | "">("welcome");
+  const [trialStarted, setTrialStarted] = useState(false);
+  const [generatedLifecycleEmails, setGeneratedLifecycleEmails] = useState<
+    Partial<Record<LifecycleEmailId, string>>
+  >({});
+  const [requestedLifecycleIds, setRequestedLifecycleIds] = useState<LifecycleEmailId[]>([]);
   const deliveryFetcher = useFetcher<typeof action>();
+  const lifecycleFetcher = useFetcher<typeof action>();
 
-  // Kick off the real generation the moment the dashboard has a real order
-  // to work with. useRef (not fetcher state) guards against the double
-  // effect invocation React can trigger in dev, so we never submit twice.
-  const orderFetcher = useFetcher<typeof action>();
-  const requestedOrderLanguage = useRef<EmailLanguage | null>(null);
+  const onboardingStorageKey = `nomi:onboarding:${shopName}:${ONBOARDING_VERSION}`;
+
   useEffect(() => {
-    if (!order || requestedOrderLanguage.current === language) return;
-    requestedOrderLanguage.current = language;
-    orderFetcher.submit(
-      { payload: JSON.stringify({ kind: "order-confirmation", shopName, language, order }) },
+    try {
+      if (window.localStorage.getItem(onboardingStorageKey) === "complete") {
+        setShowOnboarding(false);
+      }
+    } catch {
+      // Some embedded-browser privacy modes block storage. The setup still
+      // works for the current visit; it simply cannot remember completion.
+    }
+  }, [onboardingStorageKey]);
+
+  const storefrontProducts: NewsletterCampaign["products"] = products.map((product) => ({
+    title: product.title,
+    price: product.price,
+    imageUrl: product.imageUrl,
+    productUrl: product.productUrl,
+  }));
+  const orderProducts: NewsletterCampaign["products"] = order
+    ? order.lineItems.map((item) => ({
+        title: item.title,
+        price: item.total,
+        imageUrl: item.imageUrl,
+        productUrl: null,
+      }))
+    : storefrontProducts;
+  const cartProducts: NewsletterCampaign["products"] = cart
+    ? cart.lineItems.map((item) => ({
+        title: item.title,
+        price: item.total,
+        imageUrl: item.imageUrl,
+        productUrl: null,
+      }))
+    : storefrontProducts;
+  const reviewProducts: NewsletterCampaign["products"] = reviewRequest
+    ? reviewRequest.lineItems.map((item, index) => ({
+        title: item.title,
+        price: "",
+        imageUrl: item.imageUrl,
+        productUrl: index === 0 ? reviewRequest.reviewUrl : null,
+      }))
+    : storefrontProducts;
+
+  const lifecycleInputs: Record<LifecycleEmailId, LifecycleEmail> = {
+    "welcome-1": {
+      id: "welcome-1", shopName, language, tone, sequenceName: "Welcome Journey", emailName: "1st Welcome Email",
+      position: 1, sequenceLength: 3, timing: "On trigger", objective: "Welcome a new subscriber and introduce the store in a warm, plain voice.",
+      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
+    },
+    "welcome-2": {
+      id: "welcome-2", shopName, language, tone, sequenceName: "Welcome Journey", emailName: "2nd Welcome Email",
+      position: 2, sequenceLength: 3, timing: "48 hour(s) from previous", objective: "Explain what makes the store and its products worth remembering without repeating the first welcome.",
+      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
+    },
+    "welcome-3": {
+      id: "welcome-3", shopName, language, tone, sequenceName: "Welcome Journey", emailName: "3rd Welcome Email",
+      position: 3, sequenceLength: 3, timing: "2 day(s) from previous", objective: "Close the welcome journey with a useful selection of real products and an understated invitation to shop.",
+      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
+    },
+    "interest-1": {
+      id: "interest-1", shopName, language, tone, sequenceName: "Product Interest Follow-Up", emailName: "1st Follow-Up Email",
+      position: 1, sequenceLength: 2, timing: "4 hour(s) after product interest", objective: "Offer a helpful closer look at relevant products without sounding like surveillance.",
+      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
+    },
+    "interest-2": {
+      id: "interest-2", shopName, language, tone, sequenceName: "Product Interest Follow-Up", emailName: "2nd Follow-Up Email",
+      position: 2, sequenceLength: 2, timing: "2 day(s) from previous", objective: "Give a final useful product follow-up with practical context and no invented promotion.",
+      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
+    },
+    "cart-1": {
+      id: "cart-1", shopName, language, tone, sequenceName: "Abandoned Cart", emailName: "1st Cart Email",
+      position: 1, sequenceLength: 3, timing: "1 hour after checkout activity", objective: "Send a gentle reminder that the checkout is saved.",
+      customerFirstName: cart?.customerFirstName ?? null, products: cartProducts, orderNumber: null, orderTotal: cart?.total ?? null, recoveryUrl: cart?.recoveryUrl ?? null, reviewUrl: null,
+    },
+    "cart-2": {
+      id: "cart-2", shopName, language, tone, sequenceName: "Abandoned Cart", emailName: "2nd Cart Email",
+      position: 2, sequenceLength: 3, timing: "24 hour(s) from previous", objective: "Follow up with practical reassurance and the real saved products, without inventing an offer.",
+      customerFirstName: cart?.customerFirstName ?? null, products: cartProducts, orderNumber: null, orderTotal: cart?.total ?? null, recoveryUrl: cart?.recoveryUrl ?? null, reviewUrl: null,
+    },
+    "cart-3": {
+      id: "cart-3", shopName, language, tone, sequenceName: "Abandoned Cart", emailName: "3rd Cart Email",
+      position: 3, sequenceLength: 3, timing: "48 hour(s) from previous", objective: "Send one final quiet reminder, with no false urgency, discount, or expiry.",
+      customerFirstName: cart?.customerFirstName ?? null, products: cartProducts, orderNumber: null, orderTotal: cart?.total ?? null, recoveryUrl: cart?.recoveryUrl ?? null, reviewUrl: null,
+    },
+    "thank-you": {
+      id: "thank-you", shopName, language, tone, sequenceName: "Customer Care & Reviews", emailName: "Thank You Email",
+      position: 1, sequenceLength: 2, timing: "After purchase", objective: "Thank the customer warmly without duplicating the legal order receipt or inventing delivery details.",
+      customerFirstName: order?.customerFirstName ?? null, products: orderProducts, orderNumber: order?.name ?? null, orderTotal: order?.total ?? null, recoveryUrl: null, reviewUrl: null,
+    },
+    "review-request": {
+      id: "review-request", shopName, language, tone, sequenceName: "Customer Care & Reviews", emailName: "Review Request",
+      position: 2, sequenceLength: 2, timing: "7 day(s) after delivery", objective: "Ask for a product review in a brief, considerate way, only linking when a real review URL exists.",
+      customerFirstName: reviewRequest?.customerFirstName ?? order?.customerFirstName ?? null, products: reviewProducts, orderNumber: reviewRequest?.orderNumber ?? order?.name ?? null, orderTotal: null, recoveryUrl: null, reviewUrl: reviewRequest?.reviewUrl ?? null,
+    },
+    "winback-1": {
+      id: "winback-1", shopName, language, tone, sequenceName: "Winback Journey", emailName: "1st Winback Email",
+      position: 1, sequenceLength: 3, timing: "30 day(s) after last order", objective: "Reconnect with a past customer by showing what is current, without guilt or an invented offer.",
+      customerFirstName: order?.customerFirstName ?? null, products: storefrontProducts, orderNumber: order?.name ?? null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
+    },
+    "winback-2": {
+      id: "winback-2", shopName, language, tone, sequenceName: "Winback Journey", emailName: "2nd Winback Email",
+      position: 2, sequenceLength: 3, timing: "14 day(s) from previous", objective: "Share a fresh, product-led reason to return without repeating the first winback email.",
+      customerFirstName: order?.customerFirstName ?? null, products: storefrontProducts, orderNumber: order?.name ?? null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
+    },
+    "winback-3": {
+      id: "winback-3", shopName, language, tone, sequenceName: "Winback Journey", emailName: "3rd Winback Email",
+      position: 3, sequenceLength: 3, timing: "30 day(s) from previous", objective: "Close the winback journey with a quiet final invitation and no false urgency.",
+      customerFirstName: order?.customerFirstName ?? null, products: storefrontProducts, orderNumber: order?.name ?? null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
+    },
+  };
+  const allLifecycleIds = Object.keys(lifecycleInputs) as LifecycleEmailId[];
+  const lifecycleError =
+    lifecycleFetcher.data && "error" in lifecycleFetcher.data
+      ? lifecycleFetcher.data.error ?? null
+      : null;
+
+  const lifecycleResponseEmails =
+    lifecycleFetcher.data &&
+    "generatedEmails" in lifecycleFetcher.data &&
+    lifecycleFetcher.data.generatedEmails
+      ? (lifecycleFetcher.data.generatedEmails as Partial<Record<LifecycleEmailId, string>>)
+      : null;
+
+  useEffect(() => {
+    if (lifecycleResponseEmails) {
+      setGeneratedLifecycleEmails((current) => ({
+        ...current,
+        ...lifecycleResponseEmails,
+      }));
+    }
+  }, [lifecycleResponseEmails]);
+
+  const generateLifecycleEmails = (ids: LifecycleEmailId[]) => {
+    if (EMAIL_GENERATION_PAUSED || lifecycleFetcher.state !== "idle" || ids.length === 0) return;
+    setRequestedLifecycleIds(ids);
+    lifecycleFetcher.submit(
+      {
+        payload: JSON.stringify({
+          kind: "lifecycle-emails",
+          emails: ids.map((id) => lifecycleInputs[id]),
+        }),
+      },
       { method: "POST" },
     );
-    // orderFetcher is stable across renders; including it would re-run this
-    // effect on every fetcher state change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, order, shopName]);
+  };
 
+  const generateAllLifecycleEmails = () => generateLifecycleEmails(allLifecycleIds);
+
+  // Manual only: nothing here fires on mount or on reload. Each card's
+  // fetcher only submits when its onGenerate is clicked (see the templates
+  // array below and the card footer button), so viewing the dashboard
+  // never spends a generation call by itself.
+  const orderFetcher = useFetcher<typeof action>();
+  const generateOrder = () => {
+    if (!order) return;
+    orderFetcher.submit(
+      { payload: JSON.stringify({ kind: "order-confirmation", shopName, language, tone, order }) },
+      { method: "POST" },
+    );
+  };
   const generatedOrderHtml: string | null =
     orderFetcher.data && "html" in orderFetcher.data
       ? orderFetcher.data.html ?? null
       : null;
-  const orderGenerationFailed = Boolean(
-    orderFetcher.data && "error" in orderFetcher.data,
-  );
 
-  // Same pattern as the order fetcher above, for the abandoned-cart card.
-  // A separate fetcher because the two cards generate independently — one
-  // finishing (or failing) shouldn't block or clear the other.
+  // Separate fetcher per card (same pattern repeated below) so one card
+  // generating or failing never blocks another.
   const cartFetcher = useFetcher<typeof action>();
-  const requestedCartLanguage = useRef<EmailLanguage | null>(null);
-  useEffect(() => {
-    if (!cart || requestedCartLanguage.current === language) return;
-    requestedCartLanguage.current = language;
+  const generateCart = () => {
+    if (!cart) return;
     cartFetcher.submit(
-      { payload: JSON.stringify({ kind: "abandoned-cart", shopName, language, cart }) },
+      { payload: JSON.stringify({ kind: "abandoned-cart", shopName, language, tone, cart }) },
       { method: "POST" },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, language, shopName]);
-
+  };
   const generatedCartHtml: string | null =
     cartFetcher.data && "html" in cartFetcher.data
       ? cartFetcher.data.html ?? null
       : null;
-  const cartGenerationFailed = Boolean(
-    cartFetcher.data && "error" in cartFetcher.data,
-  );
 
-  // Same pattern again, for the shipping-update card.
   const shippingFetcher = useFetcher<typeof action>();
-  const requestedShippingLanguage = useRef<EmailLanguage | null>(null);
-  useEffect(() => {
-    if (!shippingUpdate || requestedShippingLanguage.current === language) return;
-    requestedShippingLanguage.current = language;
+  const generateShipping = () => {
+    if (!shippingUpdate) return;
     shippingFetcher.submit(
-      { payload: JSON.stringify({ kind: "shipping-update", shopName, language, update: shippingUpdate }) },
+      { payload: JSON.stringify({ kind: "shipping-update", shopName, language, tone, update: shippingUpdate }) },
       { method: "POST" },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, shippingUpdate, shopName]);
-
+  };
   const generatedShippingHtml: string | null =
     shippingFetcher.data && "html" in shippingFetcher.data
       ? shippingFetcher.data.html ?? null
       : null;
-  const shippingGenerationFailed = Boolean(
-    shippingFetcher.data && "error" in shippingFetcher.data,
-  );
 
-  // Same pattern again, for the review-request card.
   const reviewFetcher = useFetcher<typeof action>();
-  const requestedReviewLanguage = useRef<EmailLanguage | null>(null);
-  useEffect(() => {
-    if (!reviewRequest || requestedReviewLanguage.current === language) return;
-    requestedReviewLanguage.current = language;
+  const generateReview = () => {
+    if (!reviewRequest) return;
     reviewFetcher.submit(
-      { payload: JSON.stringify({ kind: "review-request", shopName, language, request: reviewRequest }) },
+      { payload: JSON.stringify({ kind: "review-request", shopName, language, tone, request: reviewRequest }) },
       { method: "POST" },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, reviewRequest, shopName]);
-
+  };
   const generatedReviewHtml: string | null =
     reviewFetcher.data && "html" in reviewFetcher.data
       ? reviewFetcher.data.html ?? null
       : null;
-  const reviewGenerationFailed = Boolean(
-    reviewFetcher.data && "error" in reviewFetcher.data,
-  );
 
   const refundFetcher = useFetcher<typeof action>();
-  const requestedRefundLanguage = useRef<EmailLanguage | null>(null);
-  useEffect(() => {
-    if (!refund || requestedRefundLanguage.current === language) return;
-    requestedRefundLanguage.current = language;
+  const generateRefund = () => {
+    if (!refund) return;
     refundFetcher.submit(
-      { payload: JSON.stringify({ kind: "refund-confirmation", shopName, language, refund }) },
+      { payload: JSON.stringify({ kind: "refund-confirmation", shopName, language, tone, refund }) },
       { method: "POST" },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, refund, shopName]);
-
+  };
   const generatedRefundHtml: string | null =
     refundFetcher.data && "html" in refundFetcher.data
       ? refundFetcher.data.html ?? null
       : null;
-  const refundGenerationFailed = Boolean(
-    refundFetcher.data && "error" in refundFetcher.data,
-  );
 
   const campaignFetcher = useFetcher<typeof action>();
   const generatedCampaignHtml: string | null =
@@ -880,6 +1172,7 @@ export default function Index() {
           kind: "newsletter",
           shopName,
           language,
+          tone,
           prompt,
           products: products.map((product) => ({
             title: product.title,
@@ -893,204 +1186,297 @@ export default function Index() {
     );
   };
 
-  const templates: {
-    id: string;
-    name: string;
-    status: TemplateStatus;
-    preview: React.ReactNode;
-  }[] = [
+  const generateAllEmails = () => {
+    if (order && !generatedOrderHtml && orderFetcher.state === "idle") generateOrder();
+    if (shippingUpdate && !generatedShippingHtml && shippingFetcher.state === "idle") generateShipping();
+    if (cart && !generatedCartHtml && cartFetcher.state === "idle") generateCart();
+    if (reviewRequest && !generatedReviewHtml && reviewFetcher.state === "idle") generateReview();
+    if (refund && !generatedRefundHtml && refundFetcher.state === "idle") generateRefund();
+  };
+
+  const finishOnboarding = () => {
+    try {
+      window.localStorage.setItem(onboardingStorageKey, "complete");
+    } catch {
+      // See the storage note above. Closing the setup must always work.
+    }
+    setShowOnboarding(false);
+    generateAllLifecycleEmails();
+  };
+
+  const templates: FlowTemplate[] = [
     {
       id: "order-confirmation",
+      flowId: "orders",
       name: "Order confirmation",
-      status: "Live",
+      subject: "Your order is confirmed",
+      previewText: "Everything is in one place.",
+      timing: "When an order is placed",
+      available: Boolean(order),
+      unavailableLabel: "Needs a recent order",
+      generatedHtml: generatedOrderHtml,
+      isGenerating: orderFetcher.state !== "idle",
+      error: orderFetcher.data && "error" in orderFetcher.data ? orderFetcher.data.error ?? null : null,
+      onGenerate: generateOrder,
       preview: (
         <OrderConfirmationPreview
           shopName={shopName}
           order={order}
           generatedHtml={generatedOrderHtml}
-          isGenerating={
-            Boolean(order) && !generatedOrderHtml && !orderGenerationFailed
-          }
+          isGenerating={orderFetcher.state !== "idle"}
         />
       ),
     },
     {
       id: "shipping-update",
+      flowId: "delivery",
       name: "Shipping update",
-      status: "Live",
+      subject: "Your order is on the way",
+      previewText: "Tracking details are inside.",
+      timing: "When fulfillment changes",
+      available: Boolean(shippingUpdate),
+      unavailableLabel: "Needs a fulfilled order",
+      generatedHtml: generatedShippingHtml,
+      isGenerating: shippingFetcher.state !== "idle",
+      error: shippingFetcher.data && "error" in shippingFetcher.data ? shippingFetcher.data.error ?? null : null,
+      onGenerate: generateShipping,
       preview: (
         <ShippingUpdatePreview
           update={shippingUpdate}
           generatedHtml={generatedShippingHtml}
-          isGenerating={
-            Boolean(shippingUpdate) &&
-            !generatedShippingHtml &&
-            !shippingGenerationFailed
-          }
+          isGenerating={shippingFetcher.state !== "idle"}
         />
       ),
     },
     {
       id: "abandoned-cart",
+      flowId: "recovery",
       name: "Abandoned cart",
-      status: "Live",
+      subject: "You left something behind",
+      previewText: "Your checkout is still saved.",
+      timing: "One hour after checkout activity",
+      available: Boolean(cart),
+      unavailableLabel: "Needs an abandoned checkout",
+      generatedHtml: generatedCartHtml,
+      isGenerating: cartFetcher.state !== "idle",
+      error: cartFetcher.data && "error" in cartFetcher.data ? cartFetcher.data.error ?? null : null,
+      onGenerate: generateCart,
       preview: (
         <AbandonedCartPreview
           cart={cart}
           generatedHtml={generatedCartHtml}
-          isGenerating={
-            Boolean(cart) && !generatedCartHtml && !cartGenerationFailed
-          }
+          isGenerating={cartFetcher.state !== "idle"}
         />
       ),
     },
     {
       id: "review-request",
+      flowId: "delivery",
       name: "Review request",
-      status: "Live",
+      subject: "How did it wear?",
+      previewText: "Tell us what you think.",
+      timing: "After a delivered order",
+      available: Boolean(reviewRequest),
+      unavailableLabel: "Needs a delivered order",
+      generatedHtml: generatedReviewHtml,
+      isGenerating: reviewFetcher.state !== "idle",
+      error: reviewFetcher.data && "error" in reviewFetcher.data ? reviewFetcher.data.error ?? null : null,
+      onGenerate: generateReview,
       preview: (
         <ReviewRequestPreview
           request={reviewRequest}
           generatedHtml={generatedReviewHtml}
-          isGenerating={
-            Boolean(reviewRequest) &&
-            !generatedReviewHtml &&
-            !reviewGenerationFailed
-          }
+          isGenerating={reviewFetcher.state !== "idle"}
         />
       ),
     },
     {
       id: "refund-confirmation",
+      flowId: "orders",
       name: "Refund confirmation",
-      status: "Live",
+      subject: "Your refund has been processed",
+      previewText: "A clear record of what was returned.",
+      timing: "When a refund is created",
+      available: Boolean(refund),
+      unavailableLabel: "Needs a refunded order",
+      generatedHtml: generatedRefundHtml,
+      isGenerating: refundFetcher.state !== "idle",
+      error: refundFetcher.data && "error" in refundFetcher.data ? refundFetcher.data.error ?? null : null,
+      onGenerate: generateRefund,
       preview: (
         <RefundConfirmationPreview
           refund={refund}
           generatedHtml={generatedRefundHtml}
-          isGenerating={
-            Boolean(refund) && !generatedRefundHtml && !refundGenerationFailed
-          }
+          isGenerating={refundFetcher.state !== "idle"}
         />
       ),
     },
+    {
+      id: "newsletter",
+      flowId: "campaigns",
+      name: "One-prompt campaign",
+      subject: "A campaign written from your brief",
+      previewText: "Nomi uses your products, language, and store context.",
+      timing: "Whenever you create a campaign",
+      available: campaign.trim().length > 0,
+      unavailableLabel: "Describe the campaign first",
+      generatedHtml: generatedCampaignHtml,
+      isGenerating: campaignFetcher.state !== "idle",
+      error: campaignError ?? null,
+      onGenerate: generateCampaign,
+      preview: <CampaignDraftPreview shopName={shopName} products={products} />,
+    },
   ];
 
+  const flowGroups = [
+    {
+      id: "orders" as const,
+      name: "Orders & receipts",
+      detail: "Transactional records tied to a real order",
+      trigger: "An order is placed or a refund is created in Shopify.",
+      stop: "Each receipt is generated once for that event.",
+      templateIds: ["order-confirmation", "refund-confirmation"],
+    },
+    {
+      id: "delivery" as const,
+      name: "Delivery & care",
+      detail: "Updates that follow fulfillment and delivery",
+      trigger: "A fulfillment changes status or an order is delivered.",
+      stop: "The relevant update has been sent for that order.",
+      templateIds: ["shipping-update", "review-request"],
+    },
+    {
+      id: "recovery" as const,
+      name: "Cart recovery",
+      detail: "One useful reminder for a saved checkout",
+      trigger: "A consented checkout is left with products in it.",
+      stop: "The customer orders or the checkout is no longer abandoned.",
+      templateIds: ["abandoned-cart"],
+    },
+    {
+      id: "campaigns" as const,
+      name: "Campaigns",
+      detail: "A send-ready email from one plain-language brief",
+      trigger: "You describe the campaign you want to create.",
+      stop: "The proof is ready for your review; audience delivery is separate.",
+      templateIds: ["newsletter"],
+    },
+  ];
+
+  void templates;
+  void flowGroups;
+  void generateAllEmails;
+
+  const referenceTemplateDefinitions: Array<
+    Omit<ReferenceFlowTemplate, "generatedHtml" | "isGenerating" | "error" | "onGenerate">
+  > = [
+    { id: "welcome-1", flowId: "welcome", name: "1st Welcome Email", subject: `Welcome to ${shopName}`, previewText: "Your welcome gift awaits", timing: "On trigger" },
+    { id: "welcome-2", flowId: "welcome", name: "2nd Welcome Email", subject: `A little more about ${shopName}`, previewText: "What makes this store different", timing: "48 hour(s) from previous" },
+    { id: "welcome-3", flowId: "welcome", name: "3rd Welcome Email", subject: "A few customer favorites", previewText: "Real products, chosen for you", timing: "2 day(s) from previous" },
+    { id: "interest-1", flowId: "interest", name: "1st Follow-Up Email", subject: "A closer look", previewText: "A useful follow-up from the store", timing: "4 hour(s) after product interest" },
+    { id: "interest-2", flowId: "interest", name: "2nd Follow-Up Email", subject: "Still considering it?", previewText: "The details that might help", timing: "2 day(s) from previous" },
+    { id: "cart-1", flowId: "cart", name: "1st Cart Email", subject: "You left something behind", previewText: "Your checkout is still saved", timing: "1 hour after checkout activity" },
+    { id: "cart-2", flowId: "cart", name: "2nd Cart Email", subject: "Still thinking it over?", previewText: "A simple way back to your cart", timing: "24 hour(s) from previous" },
+    { id: "cart-3", flowId: "cart", name: "3rd Cart Email", subject: "One last quiet reminder", previewText: "Your saved items are here", timing: "48 hour(s) from previous" },
+    { id: "thank-you", flowId: "care", name: "Thank You Email", subject: `Thank you from ${shopName}`, previewText: "A note of appreciation", timing: "After purchase" },
+    { id: "review-request", flowId: "care", name: "Review Request", subject: "How did it wear?", previewText: "Tell us what you think", timing: "7 day(s) after delivery" },
+    { id: "winback-1", flowId: "winback", name: "1st Winback Email", subject: "A few things worth seeing", previewText: `What is new at ${shopName}`, timing: "30 day(s) after last order" },
+    { id: "winback-2", flowId: "winback", name: "2nd Winback Email", subject: "Something new for your next visit", previewText: "A fresh product edit", timing: "14 day(s) from previous" },
+    { id: "winback-3", flowId: "winback", name: "3rd Winback Email", subject: "The door is open", previewText: "A final note from the store", timing: "30 day(s) from previous" },
+  ];
+  const referenceTemplates: ReferenceFlowTemplate[] = referenceTemplateDefinitions.map((template) => ({
+    ...template,
+    generatedHtml: generatedLifecycleEmails[template.id] ?? null,
+    isGenerating:
+      lifecycleFetcher.state !== "idle" && requestedLifecycleIds.includes(template.id),
+    error: lifecycleError,
+    onGenerate: () => generateLifecycleEmails([template.id]),
+  }));
+
+  const referenceFlows = [
+    {
+      id: "welcome" as const,
+      name: "Welcome Journey",
+      trigger: "Valid email is entered in a pop-up or email field.",
+      stop: "User places an order · User was in flow in the last 7 days.",
+      templateIds: ["welcome-1", "welcome-2", "welcome-3"] as LifecycleEmailId[],
+    },
+    {
+      id: "interest" as const,
+      name: "Product Interest Follow-Up",
+      trigger: "A consented customer shows product interest without purchasing.",
+      stop: "User places an order · User enters Abandoned Cart.",
+      templateIds: ["interest-1", "interest-2"] as LifecycleEmailId[],
+    },
+    {
+      id: "cart" as const,
+      name: "Abandoned Cart",
+      trigger: "A consented checkout is left with products in it.",
+      stop: "User places an order · Checkout is no longer abandoned.",
+      templateIds: ["cart-1", "cart-2", "cart-3"] as LifecycleEmailId[],
+    },
+    {
+      id: "care" as const,
+      name: "Customer Care & Reviews",
+      trigger: "A customer places an order or a fulfilled order is delivered.",
+      stop: "The thank-you and review steps have completed.",
+      templateIds: ["thank-you", "review-request"] as LifecycleEmailId[],
+    },
+    {
+      id: "winback" as const,
+      name: "Winback Journey",
+      trigger: "A past customer has not ordered again within the winback window.",
+      stop: "User places an order · User was in flow in the last 90 days.",
+      templateIds: ["winback-1", "winback-2", "winback-3"] as LifecycleEmailId[],
+    },
+  ];
+
+  const selectedTemplate =
+    referenceTemplates.find(({ id }) => id === selectedTemplateId) ?? referenceTemplates[0];
+  const selectedFlow =
+    referenceFlows.find(({ id }) => id === selectedTemplate.flowId) ?? referenceFlows[0];
+  const generatedCount = referenceTemplates.filter(({ generatedHtml }) => Boolean(generatedHtml)).length;
+  const isGeneratingAny = lifecycleFetcher.state !== "idle";
+
+  const startTrial = () => {
+    setTrialStarted(true);
+    generateAllLifecycleEmails();
+  };
+
+  if (showOnboarding) {
+    return (
+      <NomiOnboarding
+        shopName={shopName}
+        shopDomain={shopDomain}
+        products={products}
+        tone={tone}
+        onPickTone={(nextTone) => {
+          setTone(nextTone);
+          deliveryFetcher.submit(
+            { payload: JSON.stringify({ kind: "set-tone", tone: nextTone }) },
+            { method: "POST" },
+          );
+        }}
+        onFinish={finishOnboarding}
+      />
+    );
+  }
+
   return (
-    <div className="nomi-page">
-      <div className="nomi-shell">
-        <header className="nomi-header">
-          <div className="nomi-brand">
-            <div className="nomi-mark">
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 64 64"
-                fill="none"
-                stroke="var(--nomi-paper)"
-                strokeWidth="3.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M50 16 L14 30 L29 36 L50 16 Z" />
-                <path d="M29 36 L33 50 L50 16" />
-              </svg>
-            </div>
-            <span className="nomi-wordmark">Nomi</span>
-            <span className="nomi-brand-divider" />
-            <span className="nomi-shop">
-              {shopName}
-              {themeName ? ` · ${themeName}` : ""}
-            </span>
-          </div>
-          <h1 className="nomi-headline">
-            Your emails made {REVENUE} this month.
-          </h1>
-        </header>
-
-        <section className="nomi-delivery-strip" aria-label="Email delivery status">
-          <div>
-            <strong>{delivery.sendingEnabled ? "Sending enabled" : "Sending needs provider setup"}</strong>
-            <span>
-              {delivery.sendingEnabled
-                ? ` Shopify events are queued and sent automatically${delivery.pendingJobs ? ` · ${delivery.pendingJobs} waiting` : ""}.`
-                : " Add the Resend sender and worker secrets to activate webhook delivery on install."}
-            </span>
-          </div>
-          <span className={`nomi-badge ${delivery.sendingEnabled ? "nomi-badge-live" : "nomi-badge-draft"}`}>
-            {delivery.sendingEnabled ? "Enabled" : delivery.providerConfigured ? "Paused" : "Setup"}
-          </span>
-          {delivery.providerConfigured ? (
-            <button
-              className="nomi-text-button"
-              type="button"
-              disabled={deliveryFetcher.state !== "idle"}
-              onClick={() =>
-                deliveryFetcher.submit(
-                  {
-                    payload: JSON.stringify({
-                      kind: "set-sending",
-                      enabled: !delivery.sendingEnabled,
-                    }),
-                  },
-                  { method: "POST" },
-                )
-              }
-            >
-              {delivery.sendingEnabled ? "Pause" : "Enable sending"}
-            </button>
-          ) : null}
-        </section>
-
-        {delivery.sendingEnabled ? (
-          <section
-            className="nomi-delivery-strip nomi-delivery-strip-warning"
-            aria-label="Order and refund receipt sending"
-          >
+    <main className="nomi-flow-page nomi-flow-page-reference">
+      <div className="nomi-flow-shell">
+        <header className="nomi-flow-header">
+          <div className="nomi-flow-title">
+            <span className="nomi-flow-reference-arrow" aria-hidden="true">←</span>
             <div>
-              <strong>
-                {delivery.sendReceiptEmails
-                  ? "Order & refund receipts: on"
-                  : "Order & refund receipts: off"}
-              </strong>
-              <span>
-                Shopify has no setting to disable its own order-confirmation
-                or refund emails, on any plan — turning this on means every
-                customer gets two receipts for the same order or refund.
-                Shipping updates, cart recovery, and review requests are not
-                affected by this switch.
-              </span>
+              <div className="nomi-flow-heading-line">
+                <h1>Flow Editor</h1>
+                <span>{shopName}</span>
+              </div>
             </div>
-            <span
-              className={`nomi-badge ${delivery.sendReceiptEmails ? "nomi-badge-warning" : "nomi-badge-draft"}`}
-            >
-              {delivery.sendReceiptEmails ? "On" : "Off"}
-            </span>
-            <button
-              className="nomi-text-button nomi-text-button-warning"
-              type="button"
-              disabled={deliveryFetcher.state !== "idle"}
-              onClick={() =>
-                deliveryFetcher.submit(
-                  {
-                    payload: JSON.stringify({
-                      kind: "set-receipt-sending",
-                      enabled: !delivery.sendReceiptEmails,
-                    }),
-                  },
-                  { method: "POST" },
-                )
-              }
-            >
-              {delivery.sendReceiptEmails ? "Turn off" : "Send duplicates anyway"}
-            </button>
-          </section>
-        ) : null}
+          </div>
 
-        <section className="nomi-section">
-          <div className="nomi-section-title-row">
-            <h2 className="nomi-section-heading">Templates</h2>
+          <div className="nomi-flow-header-actions">
             <label className="nomi-language-field">
               <span>Email language</span>
               <select
@@ -1101,113 +1487,594 @@ export default function Index() {
                   setLanguage(nextLanguage);
                   deliveryFetcher.submit(
                     {
-                      payload: JSON.stringify({
-                        kind: "set-language",
-                        language: nextLanguage,
-                      }),
+                      payload: JSON.stringify({ kind: "set-language", language: nextLanguage }),
                     },
                     { method: "POST" },
                   );
                 }}
               >
                 {EMAIL_LANGUAGES.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.label}
-                  </option>
+                  <option key={option.code} value={option.code}>{option.label}</option>
                 ))}
               </select>
             </label>
-          </div>
-          <div className="nomi-grid">
-            {templates.map(({ id, name, status, preview }) => (
-              <article className="nomi-card" key={id}>
-                {preview}
-                <div className="nomi-card-footer">
-                  <span className="nomi-card-name">{name}</span>
-                  <span
-                    className={`nomi-badge ${
-                      status === "Live" ? "nomi-badge-live" : "nomi-badge-draft"
-                    }`}
-                  >
-                    {status}
-                  </span>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="nomi-section">
-          <h2 className="nomi-section-heading">Products</h2>
-          {products.length > 0 ? (
-            <div className="nomi-products-row">
-              {products.map((product) => (
-                <div className="nomi-product-tile" key={product.id}>
-                  {product.imageUrl ? (
-                    <img
-                      className="nomi-product-thumb"
-                      src={product.imageUrl}
-                      alt={product.imageAlt}
-                    />
-                  ) : (
-                    <div className="nomi-product-thumb nomi-thumb" />
-                  )}
-                  <span className="nomi-product-title">{product.title}</span>
-                  <span className="nomi-product-price">{product.price}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="nomi-hint">
-              No products yet — add one in this dev store to see it here.
-            </p>
-          )}
-        </section>
-
-        <section className="nomi-section nomi-campaign-section">
-          <h2 className="nomi-section-heading">Campaigns</h2>
-          <form
-            className="nomi-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              generateCampaign();
-            }}
-          >
-            <label className="nomi-visually-hidden" htmlFor="campaign-prompt">
-              Describe a campaign
+            <label className="nomi-language-field">
+              <span>Email tone</span>
+              <select
+                className="nomi-select"
+                value={tone}
+                onChange={(event) => {
+                  const nextTone = event.target.value as EmailTone;
+                  setTone(nextTone);
+                  deliveryFetcher.submit(
+                    {
+                      payload: JSON.stringify({ kind: "set-tone", tone: nextTone }),
+                    },
+                    { method: "POST" },
+                  );
+                }}
+              >
+                {EMAIL_TONES.map((option) => (
+                  <option key={option.code} value={option.code}>{option.label}</option>
+                ))}
+              </select>
             </label>
-            <input
-              id="campaign-prompt"
-              className="nomi-input"
-              type="text"
-              maxLength={1000}
-              value={campaign}
-              onChange={(event) => setCampaign(event.target.value)}
-              placeholder="Describe a campaign — 'Diwali sale, 15% off'"
-            />
-            <button
-              className="nomi-button"
-              type="submit"
-              disabled={
-                campaign.trim() === "" || campaignFetcher.state !== "idle"
-              }
-            >
-              {campaignFetcher.state === "idle" ? "Generate" : "Generating…"}
-            </button>
-          </form>
-          {campaignError ? (
-            <p className="nomi-form-error" role="alert">{campaignError}</p>
-          ) : null}
-          {generatedCampaignHtml ? (
-            <div className="nomi-campaign-preview">
-              <GeneratedEmailPreview
-                html={generatedCampaignHtml}
-                title="Newsletter email preview"
-              />
+            <div className="nomi-flow-progress" aria-label={`${generatedCount} of ${referenceTemplates.length} emails generated`}>
+              <strong>{generatedCount} / {referenceTemplates.length} LIVE</strong>
+              <i><b style={{ width: `${(generatedCount / referenceTemplates.length) * 100}%` }} /></i>
             </div>
-          ) : null}
+          </div>
+        </header>
+
+        <section className="nomi-reference-activation" aria-label="Account and flow activation">
+          <article className="nomi-reference-activation-card is-trial">
+            <div className="nomi-reference-activation-title">
+              <span aria-hidden="true">!</span>
+              <strong>Activate your account to start sending emails</strong>
+            </div>
+            <p>Start your 7-day free trial to enable email sending to your customers.</p>
+            <button type="button" disabled={isGeneratingAny} onClick={startTrial}>
+              {trialStarted ? "Trial Started" : "Start Free Trial"}
+            </button>
+          </article>
+
+          <article className="nomi-reference-activation-card is-flows">
+            <div className="nomi-reference-activation-title">
+              <span aria-hidden="true">!</span>
+              <strong>Activate your email flows</strong>
+            </div>
+            <p>Activate your email flows to start recovering checkout abandoners &amp; grow your revenue.</p>
+            <div className="nomi-reference-activation-actions">
+              <button
+                type="button"
+                disabled={deliveryFetcher.state !== "idle" || !delivery.providerConfigured}
+                title={delivery.providerConfigured ? undefined : "Add the Resend sender and worker secrets first"}
+                onClick={() =>
+                  deliveryFetcher.submit(
+                    { payload: JSON.stringify({ kind: "set-sending", enabled: !delivery.sendingEnabled }) },
+                    { method: "POST" },
+                  )
+                }
+              >
+                {delivery.sendingEnabled ? "Activated" : "Activate"}
+              </button>
+              <a href="mailto:support@nomi.email">▢&nbsp; Talk to support</a>
+            </div>
+          </article>
         </section>
+
+        <div className="nomi-flow-workspace">
+          <section className="nomi-flow-selector" aria-labelledby="nomi-flow-selector-title">
+            <div className="nomi-flow-panel-label" id="nomi-flow-selector-title">Flow selector</div>
+            <div className="nomi-flow-groups">
+              {referenceFlows.map((flow) => {
+                const flowTemplates = referenceTemplates.filter(({ id }) => flow.templateIds.includes(id));
+                const readyInFlow = flowTemplates.filter(({ generatedHtml }) => Boolean(generatedHtml)).length;
+                const isExpanded = expandedFlowId === flow.id;
+                return (
+                  <article className={`nomi-flow-group tone-${flow.id}${selectedFlow.id === flow.id ? " is-current" : ""}`} key={flow.id}>
+                    <button
+                      className="nomi-flow-group-head"
+                      type="button"
+                      aria-expanded={isExpanded}
+                      onClick={() => setExpandedFlowId(isExpanded ? "" : flow.id)}
+                    >
+                      <span className="nomi-flow-count">{readyInFlow}/{flowTemplates.length}</span>
+                      <span className="nomi-flow-group-copy"><strong>{flow.name}</strong><i aria-hidden="true" /></span>
+                      <span className="nomi-flow-group-status">{readyInFlow} OF {flowTemplates.length}</span>
+                      <span className="nomi-flow-chevron" aria-hidden="true">⌄</span>
+                    </button>
+
+                    {isExpanded ? (
+                      <div className="nomi-flow-email-list">
+                        {flowTemplates.map((template) => (
+                          <div className={`nomi-flow-email-row${selectedTemplate.id === template.id ? " is-selected" : ""}`} key={template.id}>
+                            <button
+                              className="nomi-flow-email-select"
+                              type="button"
+                              onClick={() => setSelectedTemplateId(template.id)}
+                            >
+                              <span className="nomi-flow-mail-icon" aria-hidden="true">✉</span>
+                              <span><strong>{template.name}</strong><small>{template.timing}</small></span>
+                            </button>
+                            <span className={`nomi-flow-state${template.error ? " is-error" : template.generatedHtml ? " is-ready" : ""}`}>
+                              {EMAIL_GENERATION_PAUSED ? "GENERATION PAUSED" : template.error ? "TRY AGAIN" : template.isGenerating ? "GENERATING" : template.generatedHtml ? "GENERATED" : "PENDING ACTIVATION"}
+                            </span>
+                            <button
+                              className="nomi-flow-generate"
+                              type="button"
+                              disabled={EMAIL_GENERATION_PAUSED || template.isGenerating || isGeneratingAny}
+                              onClick={() => {
+                                setSelectedTemplateId(template.id);
+                                template.onGenerate();
+                              }}
+                            >
+                              {EMAIL_GENERATION_PAUSED ? "Paused" : template.isGenerating ? "Writing…" : template.generatedHtml ? "Rewrite" : "Generate"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+
+            <section className="nomi-flow-rules" aria-labelledby="nomi-flow-rules-title">
+              <div className="nomi-flow-panel-label" id="nomi-flow-rules-title">{selectedFlow.name} — triggers &amp; funnel</div>
+              <p className="nomi-reference-best-practice">All Nomi triggers are based on the industry&apos;s best practices</p>
+              <div className="nomi-flow-rule-grid">
+                <div><strong>Added when</strong><p>{selectedFlow.trigger}</p></div>
+                <div><strong>Removed when</strong><p>{selectedFlow.stop}</p></div>
+              </div>
+              <label className="nomi-reference-new-contacts"><input type="checkbox" /> Only send to new contacts</label>
+              <div className="nomi-reference-timing-list">
+                {referenceTemplates
+                  .filter(({ flowId }) => flowId === selectedFlow.id)
+                  .map((template) => (
+                    <div key={template.id}>
+                      <i aria-hidden="true" />
+                      <span><strong>{template.name}</strong><small>{template.timing}</small></span>
+                      <button type="button" onClick={() => setSelectedTemplateId(template.id)} aria-label={`Edit ${template.name}`}>⌕</button>
+                    </div>
+                  ))}
+              </div>
+              <p className="nomi-flow-ai-note"><span aria-hidden="true">ⓘ</span> AI can make mistakes, so double-check that the results are accurate before using them.</p>
+            </section>
+          </section>
+
+          <aside className="nomi-flow-proof" aria-labelledby="nomi-flow-proof-title">
+            <div className="nomi-flow-proof-topline">
+              <div>
+                <span>{selectedTemplate.name} — preview</span>
+                <h2 className="nomi-visually-hidden" id="nomi-flow-proof-title">{selectedTemplate.subject}</h2>
+              </div>
+              <button
+                className="nomi-flow-proof-action"
+                type="button"
+                disabled={EMAIL_GENERATION_PAUSED || selectedTemplate.isGenerating || isGeneratingAny}
+                onClick={selectedTemplate.onGenerate}
+              >
+                {EMAIL_GENERATION_PAUSED ? "Paused" : selectedTemplate.isGenerating ? "Writing…" : selectedTemplate.generatedHtml ? "Edit⌄" : "Generate"}
+              </button>
+            </div>
+
+            <div className="nomi-flow-inbox-meta">
+              <div><strong>From</strong><span>{delivery.fromAddress ?? `${shopName} via Nomi`}</span></div>
+              <div><strong>Subject</strong><span>{selectedTemplate.subject}</span></div>
+              <div><strong>Preview</strong><span>{selectedTemplate.previewText}</span></div>
+            </div>
+
+            {selectedTemplate.error ? <p className="nomi-flow-proof-error" role="alert">{selectedTemplate.error}</p> : null}
+            <div className="nomi-flow-proof-canvas" aria-live="polite">
+              {selectedTemplate.generatedHtml ? (
+                <FlowGeneratedEmailPreview html={selectedTemplate.generatedHtml} title={`${selectedTemplate.name} generated email preview`} />
+              ) : selectedTemplate.isGenerating ? (
+                <FlowGenerationPending name={selectedTemplate.name} />
+              ) : (
+                <div className="nomi-flow-fallback-proof">
+                  <LifecycleStaticPreview
+                    shopName={shopName}
+                    template={selectedTemplate}
+                    products={products}
+                  />
+                  <div className="nomi-flow-fallback-caption">
+                    <strong>{EMAIL_GENERATION_PAUSED ? "Generation paused" : "Pending activation"}</strong>
+                    <span>{EMAIL_GENERATION_PAUSED ? "Nomi will keep this structured preview and will not call Claude until generation is resumed." : "Generate this email to replace the structured preview with Claude&apos;s finished HTML."}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
       </div>
+    </main>
+  );
+}
+
+function FlowGeneratedEmailPreview({ html, title }: { html: string; title: string }) {
+  return (
+    <iframe
+      className="nomi-flow-generated-frame"
+      srcDoc={html}
+      title={title}
+      sandbox=""
+    />
+  );
+}
+
+function FlowGenerationPending({ name }: { name: string }) {
+  return (
+    <div className="nomi-flow-writing" role="status">
+      <span className="nomi-flow-writing-mark" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      <strong>Writing {name.toLowerCase()}</strong>
+      <p>Claude is using the store record, selected language, and Nomi&apos;s email-safe design rules.</p>
+    </div>
+  );
+}
+
+function LifecycleStaticPreview({
+  shopName,
+  template,
+  products,
+}: {
+  shopName: string;
+  template: ReferenceFlowTemplate;
+  products: DashboardProduct[];
+}) {
+  return (
+    <div className="nomi-reference-email-preview" aria-hidden="true">
+      <div className="nomi-reference-email-mark">➤</div>
+      <header>
+        <span>{template.flowId === "welcome" ? "WELCOME TO" : template.name.toUpperCase()}</span>
+        <strong>{shopName}</strong>
+      </header>
+      <section>
+        <p>{template.previewText}</p>
+        <b>{template.flowId === "cart" ? "RETURN TO CART" : template.flowId === "care" ? "THANK YOU" : "SHOP NOW"}</b>
+      </section>
+      <h3>Recommended for you</h3>
+      <div className="nomi-reference-email-products">
+        {products.slice(0, 3).map((product) => (
+          <article key={product.id}>
+            {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <i />}
+            <div><strong>{product.title}</strong><span>{product.price}</span><b>BUY NOW</b></div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CampaignDraftPreview({
+  shopName,
+  products,
+}: {
+  shopName: string;
+  products: DashboardProduct[];
+}) {
+  return (
+    <div className="nomi-preview nomi-flow-campaign-placeholder" aria-hidden="true">
+      <div className="nomi-flow-campaign-brand">{shopName}</div>
+      <span className="nomi-flow-campaign-kicker">One prompt. One finished campaign.</span>
+      <strong>Tell Nomi what the moment is.</strong>
+      <p>Your products and store context become the copy, structure, and visual direction.</p>
+      <div>
+        {products.slice(0, 3).map((product) =>
+          product.imageUrl ? <img key={product.id} src={product.imageUrl} alt="" /> : <i key={product.id} />,
+        )}
+      </div>
+      <b>DESCRIBE A CAMPAIGN TO BEGIN</b>
+    </div>
+  );
+}
+
+const ONBOARDING_TONE_OPTIONS: { code: EmailTone; name: string; example: string }[] = [
+  { code: "warm-plain", name: "Warm & plain", example: "Thank you, Ananya — it's on the way" },
+  { code: "bright-bubbly", name: "Bright & bubbly", example: "Your order's on the way — yay!" },
+  { code: "calm-minimal", name: "Calm & minimal", example: "Order confirmed." },
+];
+
+function NomiOnboarding({
+  shopName,
+  shopDomain,
+  products,
+  tone,
+  onPickTone,
+  onFinish,
+}: {
+  shopName: string;
+  shopDomain: string;
+  products: DashboardProduct[];
+  tone: EmailTone;
+  onPickTone: (tone: EmailTone) => void;
+  onFinish: () => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [pickedTone, setPickedTone] = useState<EmailTone | null>(null);
+  const [emailsReady, setEmailsReady] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  const isReady = step === 4 && emailsReady;
+  const activeTone = pickedTone ?? tone;
+
+  useEffect(() => {
+    setReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onFinish();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onFinish]);
+
+  // "Say hello" (0) and "Your tone" (3) advance from their own click
+  // handlers below; these two purely informational steps advance on their
+  // own after a pause.
+  useEffect(() => {
+    const duration = ONBOARDING_AUTO_ADVANCE_MS[step];
+    if (!duration) return;
+    const timer = window.setTimeout(
+      () => setStep((current) => current + 1),
+      reducedMotion ? 0 : duration,
+    );
+    return () => window.clearTimeout(timer);
+  }, [step, reducedMotion]);
+
+  // Step 4 is two phases: a short "writing" pause, then the checklist and
+  // the button that actually closes onboarding and fires generation.
+  useEffect(() => {
+    if (step !== 4) return;
+    setEmailsReady(false);
+    const timer = window.setTimeout(() => setEmailsReady(true), reducedMotion ? 0 : 2200);
+    return () => window.clearTimeout(timer);
+  }, [step, reducedMotion]);
+
+  const pickTone = (nextTone: EmailTone) => {
+    setPickedTone(nextTone);
+    onPickTone(nextTone);
+    window.setTimeout(() => setStep(4), reducedMotion ? 0 : 850);
+  };
+
+  const { title, detail } = onboardingStepCopy(step, shopName, emailsReady);
+  const kicker = isReady ? "SETUP COMPLETE" : step === 4 ? "WRITING YOUR EMAILS" : `STEP ${step + 1} OF 4`;
+
+  return (
+    <main className="nomi-onboarding" aria-labelledby="nomi-onboarding-title">
+      <section
+        className={`nomi-onboarding-card${isReady ? " is-ready" : ""}`}
+        aria-live="polite"
+        style={
+          {
+            // Only steps 1 and 2 auto-advance on a real timer; the tab
+            // fill for the click-driven steps (0, 3, 4) is decorative
+            // chrome, same as the old flow's terminal step always was.
+            "--nomi-step-duration": `${ONBOARDING_AUTO_ADVANCE_MS[step] ?? 900}ms`,
+          } as React.CSSProperties
+        }
+      >
+        <div className="nomi-setup-header">
+          <div>
+            <strong>Setting up Nomi</strong>
+            <span>{shopName}</span>
+          </div>
+          <button
+            className="nomi-onboarding-close"
+            type="button"
+            onClick={onFinish}
+            aria-label="Close setup"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+
+        <div className="nomi-setup-tabs" aria-label={`Setup screen ${step + 1} of 5`}>
+          {ONBOARDING_RAIL.map((label, index) => (
+            <div
+              className={`${index === step ? "is-active" : ""}${index < step ? " is-complete" : ""}`}
+              key={label}
+            >
+              <span>{label}</span>
+              <i aria-hidden="true" />
+            </div>
+          ))}
+        </div>
+
+        <div className={`nomi-setup-body${isReady ? " is-ready" : ""}`} key={`${step}-${emailsReady}`}>
+          <div className="nomi-onboarding-visual">
+            <OnboardingVisual
+              step={step}
+              products={products}
+              shopDomain={shopDomain}
+              tone={activeTone}
+              emailsReady={emailsReady}
+              onPickTone={pickTone}
+            />
+          </div>
+
+          <div className="nomi-onboarding-copy">
+            <p className="nomi-onboarding-kicker">{kicker}</p>
+            <h1 id="nomi-onboarding-title">{title}</h1>
+            <p>{detail}</p>
+          </div>
+
+          {step === 0 ? (
+            <div className="nomi-onboarding-confirm">
+              <input
+                className="nomi-onboarding-confirm-input"
+                type="text"
+                value={shopDomain}
+                readOnly
+                aria-label="Your Shopify store"
+              />
+              <button className="nomi-onboarding-primary" type="button" onClick={() => setStep(1)}>
+                Say hello
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          ) : isReady ? (
+            <button className="nomi-onboarding-primary" type="button" onClick={onFinish}>
+              See your emails
+              <span aria-hidden="true">→</span>
+            </button>
+          ) : step === 1 || step === 2 ? (
+            <span className="nomi-setup-status" aria-hidden="true">
+              {step === 1 ? "LOOKING" : "SCHEDULING"}
+            </span>
+          ) : null}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function OnboardingVisual({
+  step,
+  products,
+  shopDomain,
+  tone,
+  emailsReady,
+  onPickTone,
+}: {
+  step: number;
+  products: DashboardProduct[];
+  shopDomain: string;
+  tone: EmailTone;
+  emailsReady: boolean;
+  onPickTone: (tone: EmailTone) => void;
+}) {
+  if (step === 0) {
+    return (
+      <div className="nomi-store-scan" aria-hidden="true">
+        <div className="nomi-browser-frame">
+          <div className="nomi-browser-bar">
+            <span><i /><i /><i /></span>
+            <em>{shopDomain}</em>
+          </div>
+          <div className="nomi-browser-hero" />
+          <div className="nomi-browser-products">
+            {[0, 1, 2, 3].map((index) => {
+              const product = products[index];
+              return product?.imageUrl ? (
+                <img key={product.id} src={product.imageUrl} alt="" />
+              ) : (
+                <span key={index} />
+              );
+            })}
+          </div>
+          <div className="nomi-scan-line" />
+        </div>
+        <div className="nomi-found-note">{products.length || 5} PRODUCTS</div>
+      </div>
+    );
+  }
+
+  if (step === 1) {
+    // Real products stand in for the mockup's "found" tags — no fake
+    // colors/fonts claim, since real brand-asset extraction isn't
+    // available yet (see DECISIONS.md, 2026-08-17).
+    const foundLabels = ["IN YOUR SHOP", "REAL PRICES", "READY TO SEND", "YOUR VOICE"];
+    return (
+      <div className="nomi-proof-sheet" aria-hidden="true">
+        <p>WHAT NOMI FOUND</p>
+        <div>
+          {foundLabels.map((label, index) => (
+            <article key={label} style={{ "--proof-index": index } as React.CSSProperties}>
+              <span>{label}</span>
+              {products[index]?.imageUrl ? (
+                <img src={products[index].imageUrl} alt="" />
+              ) : (
+                <i className={`proof-tone-${index}`} />
+              )}
+              <b />
+              <em />
+              <button tabIndex={-1} type="button" aria-hidden="true" />
+            </article>
+          ))}
+        </div>
+        <footer>Real products, real prices, nothing invented</footer>
+      </div>
+    );
+  }
+
+  if (step === 2) {
+    const days = ["DAY 0", "DAY 1", "DAY 3", "DAY 7", "DAY 10", "DAY 14"];
+    return (
+      <div className="nomi-trigger-calendar" aria-hidden="true">
+        <div className="nomi-trigger-days">
+          {days.map((day) => <span key={day}>{day}</span>)}
+        </div>
+        <div className="nomi-trigger-grid">
+          {days.map((day, index) => (
+            <div key={day}>
+              {index !== 2 && index !== 5 ? <i className={`tone-${index}`} /> : null}
+              {index === 0 ? <i className="tone-magenta second" /> : null}
+            </div>
+            ))}
+        </div>
+        <p>Five journeys, timed behind what a customer does</p>
+      </div>
+    );
+  }
+
+  if (step === 3) {
+    return (
+      <div className="nomi-tone-picker" role="radiogroup" aria-label="Choose the tone for your emails">
+        {ONBOARDING_TONE_OPTIONS.map((option) => (
+          <button
+            key={option.code}
+            type="button"
+            role="radio"
+            aria-checked={tone === option.code}
+            className={`nomi-tone-option${tone === option.code ? " is-chosen" : ""}`}
+            onClick={() => onPickTone(option.code)}
+          >
+            <span className="nomi-tone-dot" aria-hidden="true" />
+            <span className="nomi-tone-copy">
+              <strong>{option.name}</strong>
+              <em>“{option.example}”</em>
+            </span>
+            {tone === option.code ? (
+              <span className="nomi-tone-check" aria-hidden="true">✓</span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  if (!emailsReady) {
+    return (
+      <div className="nomi-writing-emails" aria-hidden="true">
+        <span className="nomi-writing-mark"><i /><i /><i /></span>
+        <div className="nomi-writing-bar"><b /></div>
+      </div>
+    );
+  }
+
+  const readyItems = [
+    ["Order confirmation", "Ready"],
+    ["Shipping update", "Ready"],
+    ["Abandoned cart", "Ready"],
+    ["Refund confirmation", "Ready"],
+    ["Review request", "Ready"],
+  ];
+
+  return (
+    <div className="nomi-ready-list" aria-hidden="true">
+      {readyItems.map(([name, status], index) => (
+        <div key={name} style={{ "--ready-index": index } as React.CSSProperties}>
+          <span className="nomi-ready-check">✓</span>
+          <strong>{name}</strong>
+          <small>{status}</small>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1274,11 +2141,13 @@ function RefundConfirmationPreview({
    the Moon & Mango archetype from the design folder — it wears the
    merchant's palette, not Nomi's, which is the whole point of the app. */
 
-// Four states, in order of preference: a real Claude-generated email for
-// the real order; a "writing…" placeholder while that call is in flight;
-// a hand-built preview using the same real order data if generation
-// failed; and the static Moon & Mango archetype when the store has no
-// orders at all yet. The dashboard never shows an empty card.
+// Four states, in order of preference: a "writing…" placeholder while a
+// manually-triggered generation call is in flight; the real Claude-
+// generated email once that call returns (or from a prior click — nothing
+// here auto-generates); a hand-built preview using the same real order
+// data before anyone has clicked Generate, or if generation failed; and
+// the static Moon & Mango archetype when the store has no orders at all
+// yet. The dashboard never shows an empty card.
 function OrderConfirmationPreview({
   shopName,
   order,
@@ -1356,9 +2225,9 @@ function GeneratingEmailPreview({ label }: { label: string }) {
   );
 }
 
-// The hand-built, real-data-but-not-AI preview from before Claude was wired
-// in. Kept as the fallback when generation fails, so a bad API call still
-// shows real order data instead of reverting all the way to the mockup.
+// The hand-built, real-data-but-not-AI preview. Shown before Generate has
+// been clicked, and again if generation fails — either way, real order
+// data instead of reverting all the way to the static mockup.
 function RealDataOrderConfirmationPreview({
   shopName,
   order,
@@ -1584,10 +2453,11 @@ function StaticOrderConfirmationPreview() {
   );
 }
 
-// Same four-state pattern as the other cards: a real generated email for
-// a real shipped order, a "writing…" placeholder while that's in flight,
-// a hand-built real-data preview if generation failed, and the static
-// mockup when the store has no fulfilled orders yet.
+// Same four-state pattern as the other cards: a real generated email for a
+// real shipped order (from a prior Generate click — nothing here auto-
+// generates), a "writing…" placeholder while that's in flight, a
+// hand-built real-data preview before Generate is clicked or if generation
+// failed, and the static mockup when the store has no fulfilled orders yet.
 function ShippingUpdatePreview({
   update,
   generatedHtml,
@@ -1611,8 +2481,8 @@ function ShippingUpdatePreview({
   return <RealDataShippingUpdatePreview update={update} />;
 }
 
-// The hand-built, real-data-but-not-AI fallback, shown only when
-// generation fails — mirrors the other cards' RealData* components.
+// The hand-built, real-data-but-not-AI fallback — shown before Generate is
+// clicked and if generation fails — mirrors the other cards' RealData*.
 function RealDataShippingUpdatePreview({
   update,
 }: {
@@ -1756,8 +2626,9 @@ function StaticShippingUpdatePreview() {
 }
 
 // Same four-state pattern as OrderConfirmationPreview: a real generated
-// email for a real cart, a "writing…" placeholder while that's in flight,
-// a hand-built real-data preview if generation failed, and the static
+// email for a real cart (from a prior Generate click), a "writing…"
+// placeholder while that's in flight, a hand-built real-data preview
+// before Generate is clicked or if generation failed, and the static
 // mockup when the store has no abandoned checkouts yet.
 function AbandonedCartPreview({
   cart,
@@ -1904,10 +2775,11 @@ function StaticAbandonedCartPreview() {
   );
 }
 
-// Same four-state pattern as the other cards: a real generated email for
-// a real delivered order, a "writing…" placeholder while that's in
-// flight, a hand-built real-data preview if generation failed, and the
-// static mockup when no order has been marked delivered yet.
+// Same four-state pattern as the other cards: a real generated email for a
+// real delivered order (from a prior Generate click), a "writing…"
+// placeholder while that's in flight, a hand-built real-data preview
+// before Generate is clicked or if generation failed, and the static
+// mockup when no order has been marked delivered yet.
 function ReviewRequestPreview({
   request,
   generatedHtml,
@@ -1931,8 +2803,8 @@ function ReviewRequestPreview({
   return <RealDataReviewRequestPreview request={request} />;
 }
 
-// The hand-built, real-data-but-not-AI fallback, shown only when
-// generation fails — mirrors the other cards' RealData* components. The
+// The hand-built, real-data-but-not-AI fallback — shown before Generate is
+// clicked and if generation fails — mirrors the other cards' RealData*. The
 // star-dot row is decorative here too, same as the static mockup — the
 // real generated email never draws a rating widget (see the skeleton
 // prompt: it can't be made functional in HTML email).

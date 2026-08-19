@@ -33,5 +33,6 @@ export async function generateAbandonedCartEmail(
     ABANDONED_CART_SKELETON_PROMPT,
     buildCartMessage(cart),
     cart.language,
+    cart.tone,
   );
 }

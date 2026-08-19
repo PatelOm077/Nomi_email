@@ -26,8 +26,21 @@ export const EMAIL_LANGUAGES = [
 
 export type EmailLanguage = (typeof EMAIL_LANGUAGES)[number]["code"];
 
+// Chosen once during onboarding (and adjustable afterward from the same
+// language control in the flow header) and threaded through to every
+// generation call — see design-system-prompt.ts for what each tone
+// actually changes about the shared Voice rules.
+export const EMAIL_TONES = [
+  { code: "warm-plain", label: "Warm & plain" },
+  { code: "bright-bubbly", label: "Bright & bubbly" },
+  { code: "calm-minimal", label: "Calm & minimal" },
+] as const;
+
+export type EmailTone = (typeof EMAIL_TONES)[number]["code"];
+
 interface LocalizedEmailInput {
   language: EmailLanguage;
+  tone: EmailTone;
 }
 
 // null customerFirstName means the name genuinely wasn't captured (guest
@@ -104,4 +117,36 @@ export interface NewsletterCampaign extends LocalizedEmailInput {
   shopName: string;
   prompt: string;
   products: NewsletterProduct[];
+}
+
+export type LifecycleEmailId =
+  | "welcome-1"
+  | "welcome-2"
+  | "welcome-3"
+  | "interest-1"
+  | "interest-2"
+  | "cart-1"
+  | "cart-2"
+  | "cart-3"
+  | "thank-you"
+  | "review-request"
+  | "winback-1"
+  | "winback-2"
+  | "winback-3";
+
+export interface LifecycleEmail extends LocalizedEmailInput {
+  id: LifecycleEmailId;
+  shopName: string;
+  sequenceName: string;
+  emailName: string;
+  position: number;
+  sequenceLength: number;
+  timing: string;
+  objective: string;
+  customerFirstName: string | null;
+  products: NewsletterProduct[];
+  orderNumber: string | null;
+  orderTotal: string | null;
+  recoveryUrl: string | null;
+  reviewUrl: string | null;
 }

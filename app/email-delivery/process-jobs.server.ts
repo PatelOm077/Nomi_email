@@ -5,7 +5,8 @@ import { generateShippingUpdateEmail } from "../email-engine/generate-shipping-u
 import { generateRefundConfirmationEmail } from "../email-engine/generate-refund-confirmation-email";
 import { generateReviewRequestEmail } from "../email-engine/generate-review-request-email";
 import { generateAbandonedCartEmail } from "../email-engine/generate-abandoned-cart-email";
-import { EMAIL_LANGUAGES, type EmailLanguage } from "../email-engine/types";
+import { EMAIL_GENERATION_PAUSED } from "../email-engine/generation-status";
+import { EMAIL_LANGUAGES, EMAIL_TONES, type EmailLanguage, type EmailTone } from "../email-engine/types";
 import { sendEmail } from "./provider.server";
 
 // Kept in sync with the same set in queue.server.ts — a job can sit
@@ -179,6 +180,10 @@ function resolveLanguage(value: unknown, fallback: string): EmailLanguage {
   return EMAIL_LANGUAGES.find(({ code }) => code.toLowerCase().split("-")[0] === prefix)?.code ?? "en";
 }
 
+function resolveTone(value: string | undefined): EmailTone {
+  return EMAIL_TONES.some(({ code }) => code === value) ? (value as EmailTone) : "warm-plain";
+}
+
 function formatMoney(money: Money, language: EmailLanguage): string {
   return new Intl.NumberFormat(language, {
     style: "currency",
@@ -232,9 +237,11 @@ async function prepareAbandonedCart(
 
   const settings = await db.shopSettings.findUnique({ where: { shop } });
   const language = resolveLanguage(payload.customer_locale, settings?.language ?? "en");
+  const tone = resolveTone(settings?.tone);
   const html = await generateAbandonedCartEmail({
     shopName: data.shop.name,
     language,
+    tone,
     customerFirstName: checkout.customer?.firstName ?? null,
     recoveryUrl: checkout.abandonedCheckoutUrl,
     total: formatMoney(checkout.totalPriceSet.shopMoney, language),
@@ -273,9 +280,11 @@ async function prepareEmail(
 
   const settings = await db.shopSettings.findUnique({ where: { shop } });
   const language = resolveLanguage(payload.customer_locale, settings?.language ?? "en");
+  const tone = resolveTone(settings?.tone);
   const common = {
     shopName: data.shop.name,
     language,
+    tone,
     customerFirstName: order.customer?.firstName ?? null,
     orderNumber: order.name,
   };
@@ -349,6 +358,12 @@ async function prepareEmail(
 }
 
 export async function processPendingEmailJobs(limit = 10) {
+  // Leave pending work untouched while generation is paused so no Claude call
+  // or delivery attempt starts, and the queue can resume cleanly later.
+  if (EMAIL_GENERATION_PAUSED) {
+    return { sent: 0, skipped: 0, retried: 0, failed: 0 };
+  }
+
   const jobs = await db.emailJob.findMany({
     where: { status: "pending", availableAt: { lte: new Date() } },
     orderBy: { createdAt: "asc" },

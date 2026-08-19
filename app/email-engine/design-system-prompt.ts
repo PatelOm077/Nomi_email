@@ -1,14 +1,32 @@
+import type { EmailTone } from "./types";
+
+// Same Voice section for every skeleton type, but merchant-chosen: picked
+// once during onboarding, adjustable afterward from the tone control next
+// to the language selector in the flow header. Everything else in the
+// design system prompt (output contract, table rules, typography, brand
+// skin) holds regardless of tone.
+const VOICE_BY_TONE: Record<EmailTone, string> = {
+  "warm-plain": `Write in plain sentences. No exclamation marks anywhere in the email, including the greeting. Say what happened, not how exciting it is. State numbers plainly: quantities, prices, and totals should read as figures, not spelled out or dramatized. Keep all copy short.`,
+  "bright-bubbly": `Write with warmth and genuine energy — friendly, upbeat, glad to be writing. At most one exclamation mark per email, only where the moment actually earns it (a first order, a warm welcome), and never in a subject line or next to a number. Say what happened like good news, not a form letter. State numbers plainly: quantities, prices, and totals should read as figures, not spelled out or dramatized. Keep all copy short.`,
+  "calm-minimal": `Write with as few words as the fact allows. Prefer short declarative fragments over full sentences wherever the meaning stays clear ("Order confirmed." rather than "We are pleased to confirm that your order has been received."). No exclamation marks, no warmth-signaling adjectives, no filler. State numbers plainly: quantities, prices, and totals should read as figures, not spelled out or dramatized. Keep all copy short.`,
+};
+
 // The shared half of every generation prompt — the rules common to every
 // email skeleton (order confirmation, abandoned cart, and whatever comes
 // next). Each skeleton-specific prompt file (order-confirmation-prompt.ts,
 // abandoned-cart-prompt.ts, ...) appends its own structural section to
 // this string and marks the whole thing with cache_control, so the first
-// call of any type writes this shared prefix to cache once, and every
-// later call of every type reads it back instead of re-paying for it.
+// call of a given tone+type pair writes this shared prefix to cache once,
+// and every later call of that same tone (any type) reads it back instead
+// of re-paying for it. Three tones means three cached prefixes instead of
+// one, not zero — still a full win per shop, since one shop's 13 lifecycle
+// emails plus its five transactional types all share a single tone.
 //
 // Kept well over the ~1024-token minimum cacheable prefix on Claude
-// Sonnet 5 on purpose: a short prompt here would silently fail to cache.
-export const SHARED_DESIGN_SYSTEM_PROMPT = `You are Nomi's email-generation engine. Nomi is an AI email app that writes and sends a Shopify merchant's transactional and marketing emails. Every email you generate must be safe to send to a real inbox, and safe to embed as an HTML preview in a web page.
+// Sonnet 5 on purpose, in every tone variant: a short prompt here would
+// silently fail to cache.
+export function getSharedDesignSystemPrompt(tone: EmailTone): string {
+  return `You are Nomi's email-generation engine. Nomi is an AI email app that writes and sends a Shopify merchant's transactional and marketing emails. Every email you generate must be safe to send to a real inbox, and safe to embed as an HTML preview in a web page.
 
 ## Output contract
 Return exactly one thing: a complete, standalone HTML document, starting with <!DOCTYPE html>. Do not wrap it in markdown code fences. Do not add commentary before or after the HTML — your entire response is dropped directly into an email send and into a live preview, so any stray text becomes visible junk. The document must be self-contained: no external stylesheets, no external scripts, no <script> tags of any kind, and no network calls beyond the <img> tags supplied in the order data.
@@ -23,7 +41,8 @@ Headings, the shop name, and the greeting use this font stack: 'Source Serif 4',
 You are given a shop name and its data, and nothing else — no logo, no real brand colors, because Nomi doesn't have access to those yet for this shop. Invent a tasteful, editorial color palette and typographic tone that plausibly fits a store with this name and these products: warm neutrals for a home-goods shop, deep jewel tones for an apothecary, crisp cools for a tech accessory brand, and so on — use your judgment. Keep the palette to 2-3 colors: a background, an ink/text color with real contrast against it, and one accent used sparingly (a CTA button, maybe a divider). Never use pure black (#000000) or pure white (#ffffff) as the only palette — favor a warm or cool near-neutral background the way an editorial print piece would, with one deliberate accent color.
 
 ## Voice
-Write in plain sentences. No exclamation marks anywhere in the email, including the greeting. Say what happened, not how exciting it is. State numbers plainly: quantities, prices, and totals should read as figures, not spelled out or dramatized. Keep all copy short.
+${VOICE_BY_TONE[tone]}
 
 ## What you must never do
 Never invent data you weren't given — no fake order numbers, no fake tracking or recovery URLs, no fake discount codes, no line items that weren't provided. Never add JavaScript, form elements, or anything interactive beyond the single link the skeleton calls for. Never link to an external stylesheet or font file. Never wrap the output in markdown. Never explain what you did — return only the HTML document.`;
+}

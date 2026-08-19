@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicClient } from "./anthropic-client";
-import { SHARED_DESIGN_SYSTEM_PROMPT } from "./design-system-prompt";
-import { EMAIL_LANGUAGES, type EmailLanguage } from "./types";
+import { getSharedDesignSystemPrompt } from "./design-system-prompt";
+import { EMAIL_GENERATION_PAUSED } from "./generation-status";
+import { EMAIL_LANGUAGES, type EmailLanguage, type EmailTone } from "./types";
 
 // Strips a markdown code fence if the model wraps the HTML in one despite
 // the system prompt telling it not to — cheap safety net, not the primary
@@ -22,7 +23,12 @@ export async function generateEmailHtml(
   skeletonPrompt: string,
   userMessage: string,
   language: EmailLanguage,
+  tone: EmailTone,
 ): Promise<string> {
+  if (EMAIL_GENERATION_PAUSED) {
+    throw new Error("Email generation is paused.");
+  }
+
   const languageName = EMAIL_LANGUAGES.find(
     (candidate) => candidate.code === language,
   )?.label;
@@ -37,7 +43,7 @@ export async function generateEmailHtml(
     system: [
       {
         type: "text",
-        text: SHARED_DESIGN_SYSTEM_PROMPT,
+        text: getSharedDesignSystemPrompt(tone),
         cache_control: { type: "ephemeral" },
       },
       {

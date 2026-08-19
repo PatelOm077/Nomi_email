@@ -30,5 +30,6 @@ export async function generateNewsletterEmail(
     NEWSLETTER_SKELETON_PROMPT,
     buildNewsletterMessage(campaign),
     campaign.language,
+    campaign.tone,
   );
 }

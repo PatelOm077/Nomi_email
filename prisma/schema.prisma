@@ -44,6 +44,12 @@ model ShopSettings {
   // by this flag because they don't have that duplication problem.
   sendReceiptEmails Boolean  @default(false)
   language       String   @default("en")
+  // One of EMAIL_TONES' codes (email-engine/types.ts). Defaults to the
+  // tone every shop had before this field existed — "warm-plain" is the
+  // Voice rule design-system-prompt.ts always used, so an un-migrated
+  // shop's generated emails don't change until it actively picks another
+  // tone in onboarding or the flow header.
+  tone           String   @default("warm-plain")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }

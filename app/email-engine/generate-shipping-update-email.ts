@@ -42,5 +42,6 @@ export async function generateShippingUpdateEmail(
     SHIPPING_UPDATE_SKELETON_PROMPT,
     buildShippingMessage(update),
     update.language,
+    update.tone,
   );
 }

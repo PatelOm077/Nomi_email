@@ -35,5 +35,6 @@ export async function generateRefundConfirmationEmail(
     REFUND_CONFIRMATION_SKELETON_PROMPT,
     buildRefundMessage(refund),
     refund.language,
+    refund.tone,
   );
 }

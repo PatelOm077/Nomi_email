@@ -36,5 +36,6 @@ export async function generateReviewRequestEmail(
     REVIEW_REQUEST_SKELETON_PROMPT,
     buildReviewMessage(request),
     request.language,
+    request.tone,
   );
 }
