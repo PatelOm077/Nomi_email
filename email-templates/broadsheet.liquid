@@ -119,6 +119,7 @@
 
             {% when 'abandoned_cart' %}
               {% assign recovery_url = abandoned_checkout.url | default: abandoned_visit.url %}
+              {% assign remaining_item_count = abandoned_checkout.remaining_products_count | default: abandoned_visit.remaining_cart_products_count | default: 0 %}
               <tr>
                 <td class="email-pad" style="padding:52px 48px 20px;">
                   <div style="width:36px;height:4px;background:{{ brand_magenta }};font-size:0;line-height:0;">&nbsp;</div>
@@ -131,17 +132,18 @@
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     {% if abandoned_checkout %}
                       {% for line in abandoned_checkout.line_items %}
-                        <tr><td width="70" style="padding:0 16px 18px 0;">{% if line.image_url %}<img src="{{ line.image_url }}" alt="{{ line.product_title }}" width="70" height="70" style="display:block;width:70px;height:70px;object-fit:cover;border:0;">{% endif %}</td><td style="padding:0 0 18px;font-family:'Source Serif 4',Georgia,serif;font-size:16px;line-height:23px;color:{{ brand_ink }};">{{ line.product_title }}<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6b6864;">{{ line.variant_title }} · Qty {{ line.quantity }}</div></td></tr>
+                        <tr><td width="70" style="padding:0 16px 18px 0;">{% if line.image_url %}<img src="{{ line.image_url | escape }}" alt="{{ line.product_title | escape }}" width="70" height="70" style="display:block;width:70px;height:70px;object-fit:cover;border:0;">{% endif %}</td><td style="padding:0 0 18px;font-family:'Source Serif 4',Georgia,serif;font-size:16px;line-height:23px;color:{{ brand_ink }};">{{ line.product_title }}<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6b6864;">{% if line.variant_title != blank %}{{ line.variant_title }} · {% endif %}Qty {{ line.quantity }}</div></td></tr>
                       {% endfor %}
                     {% else %}
                       {% for line in abandoned_visit.products_added_to_cart %}
-                        <tr><td width="70" style="padding:0 16px 18px 0;">{% if line.image_url %}<img src="{{ line.image_url }}" alt="{{ line.title }}" width="70" height="70" style="display:block;width:70px;height:70px;object-fit:cover;border:0;">{% endif %}</td><td style="padding:0 0 18px;font-family:'Source Serif 4',Georgia,serif;font-size:16px;line-height:23px;color:{{ brand_ink }};">{{ line.title }}<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6b6864;">{{ line.variant_title }} · Qty {{ line.quantity }}</div></td></tr>
+                        <tr><td width="70" style="padding:0 16px 18px 0;">{% if line.image_url %}<img src="{{ line.image_url | escape }}" alt="{{ line.title | escape }}" width="70" height="70" style="display:block;width:70px;height:70px;object-fit:cover;border:0;">{% endif %}</td><td style="padding:0 0 18px;font-family:'Source Serif 4',Georgia,serif;font-size:16px;line-height:23px;color:{{ brand_ink }};">{{ line.title }}<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6b6864;">{% if line.variant_title != blank %}{{ line.variant_title }} · {% endif %}Qty {{ line.quantity }}</div></td></tr>
                       {% endfor %}
                     {% endif %}
+                    {% if remaining_item_count > 0 %}<tr><td colspan="2" style="padding:0 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6b6864;">+{{ remaining_item_count }} more {% if remaining_item_count == 1 %}item{% else %}items{% endif %}</td></tr>{% endif %}
                   </table>
                 </td>
               </tr>
-              <tr><td class="email-pad" style="padding:24px 48px 50px;"><a href="{{ recovery_url }}" style="display:inline-block;background:{{ brand_cyan }};color:#fff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:16px;font-weight:bold;padding:15px 22px;">Return to checkout</a></td></tr>
+              {% if recovery_url != blank %}<tr><td class="email-pad" style="padding:24px 48px 50px;"><a href="{{ recovery_url | escape }}" style="display:inline-block;background:{{ brand_cyan }};color:#fff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:16px;font-weight:bold;padding:15px 22px;">Return to checkout</a></td></tr>{% endif %}
 
             {% else %}
               <tr>

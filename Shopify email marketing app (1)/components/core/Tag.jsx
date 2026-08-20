@@ -1,5 +1,3 @@
-import React from 'react';
-
 export function Tag({ tone = 'neutral', children }) {
   const tones = {
     neutral: { background: 'var(--nomi-neutral-200)', color: 'var(--nomi-neutral-900)' },

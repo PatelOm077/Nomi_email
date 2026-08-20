@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -816,60 +816,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
-// v3, not v2: the flow itself changed shape (a real tone choice replaced a
-// purely decorative step), so a shop that already finished the old five-step
-// version sees the new one once rather than staying silently on record as
-// "onboarded" for a flow it never saw.
-const ONBOARDING_VERSION = "v3";
+// v4, not v3: the whole flow was rebuilt to match the approved mockup
+// pixel-for-pixel (new step content, new pacing, the URL-entry step is
+// gone entirely), so a shop that saw any earlier version sees this one
+// once rather than staying silently on record as "onboarded" for a flow
+// it never saw.
+const ONBOARDING_VERSION = "v4";
 
-const ONBOARDING_RAIL = ["Say hello", "Look around", "Good timing", "Your tone", "All set"] as const;
-
-// The two purely informational steps auto-advance after this long; "Say
-// hello" (0) and "Your tone" (3) wait for the merchant instead — see the
-// click handlers in NomiOnboarding.
-const ONBOARDING_AUTO_ADVANCE_MS: Partial<Record<number, number>> = {
-  1: 3000,
-  2: 3400,
-};
-
-function onboardingStepCopy(
-  step: number,
-  shopName: string,
-  emailsReady: boolean,
-): { title: string; detail: string } {
-  switch (step) {
-    case 0:
-      return {
-        title: "Here's the store we're setting up.",
-        detail: "You're already connected inside Shopify — this is the link Nomi reads from.",
-      };
-    case 1:
-      return {
-        title: `Found you, ${shopName}.`,
-        detail: "Your products are already loaded here, nothing to upload.",
-      };
-    case 2:
-      return {
-        title: "We'll know exactly when to say something.",
-        detail: "Each customer action gets the right email, at the right distance behind it.",
-      };
-    case 3:
-      return {
-        title: "What's your tone?",
-        detail: "Pick how Nomi should sound in every email it writes for you.",
-      };
-    default:
-      return emailsReady
-        ? {
-            title: "Your email system is ready.",
-            detail: "Thirteen emails across five journeys, written and waiting for you. Nothing sends until you say so.",
-          }
-        : {
-            title: "Writing your emails.",
-            detail: "Using your real products and the tone you picked.",
-          };
-  }
-}
+const ONBOARDING_RAIL = ["Welcome", "Look around", "Good timing", "Your tone", "All set"] as const;
 
 function resolveDashboardLanguage(value: string): EmailLanguage {
   return EMAIL_LANGUAGES.some(({ code }) => code === value)
@@ -914,15 +868,45 @@ type ReferenceFlowTemplate = {
   onGenerate: () => void;
 };
 
+function FlowChevronIcon() {
+  return (
+    <svg className="nomi-flow-chevron" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 8 L10 12 L14 8" />
+    </svg>
+  );
+}
+
+function RuleAddedIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.25" />
+      <path d="M10 6.5 L10 13.5 M6.5 10 L13.5 10" />
+    </svg>
+  );
+}
+
+function RuleRemovedIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.25" />
+      <path d="M6.5 10 L13.5 10" />
+    </svg>
+  );
+}
+
 export default function Index() {
-  const { shopName, shopDomain, products, order, cart, shippingUpdate, reviewRequest, refund, delivery } =
+  const { shopName, products, order, cart, shippingUpdate, reviewRequest, refund, delivery } =
     useLoaderData<typeof loader>();
   const [campaign] = useState("");
   const [language, setLanguage] = useState<EmailLanguage>(
     resolveDashboardLanguage(delivery.language),
   );
   const [tone, setTone] = useState<EmailTone>(resolveDashboardTone(delivery.tone));
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  // Resolve the browser-only completion flag before mounting the animated
+  // onboarding. Rendering it during SSR can start its CSS animations before
+  // React hydrates the page, which makes the welcome sequence appear to run
+  // twice in development.
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<LifecycleEmailId>("welcome-1");
   const [expandedFlowId, setExpandedFlowId] = useState<ReferenceFlowId | "">("welcome");
   const [trialStarted, setTrialStarted] = useState(false);
@@ -936,14 +920,14 @@ export default function Index() {
   const onboardingStorageKey = `nomi:onboarding:${shopName}:${ONBOARDING_VERSION}`;
 
   useEffect(() => {
+    let isComplete = false;
     try {
-      if (window.localStorage.getItem(onboardingStorageKey) === "complete") {
-        setShowOnboarding(false);
-      }
+      isComplete = window.localStorage.getItem(onboardingStorageKey) === "complete";
     } catch {
       // Some embedded-browser privacy modes block storage. The setup still
       // works for the current visit; it simply cannot remember completion.
     }
+    setShowOnboarding(!isComplete);
   }, [onboardingStorageKey]);
 
   const storefrontProducts: NewsletterCampaign["products"] = products.map((product) => ({
@@ -1204,6 +1188,18 @@ export default function Index() {
     generateAllLifecycleEmails();
   };
 
+  // Embedded apps run inside an iframe on the app's own origin, not
+  // admin.shopify.com — devtools opened on the parent page can't see or
+  // clear this storage key. Do it from inside the app itself instead.
+  const replayOnboarding = () => {
+    try {
+      window.localStorage.removeItem(onboardingStorageKey);
+    } catch {
+      // Same privacy-mode note as above.
+    }
+    setShowOnboarding(true);
+  };
+
   const templates: FlowTemplate[] = [
     {
       id: "order-confirmation",
@@ -1443,12 +1439,14 @@ export default function Index() {
     generateAllLifecycleEmails();
   };
 
+  if (showOnboarding === null) {
+    return <main className="nomi-onboarding" aria-label="Loading setup" />;
+  }
+
   if (showOnboarding) {
     return (
       <NomiOnboarding
         shopName={shopName}
-        shopDomain={shopDomain}
-        products={products}
         tone={tone}
         onPickTone={(nextTone) => {
           setTone(nextTone);
@@ -1477,6 +1475,13 @@ export default function Index() {
           </div>
 
           <div className="nomi-flow-header-actions">
+            <button
+              className="nomi-replay-setup"
+              type="button"
+              onClick={replayOnboarding}
+            >
+              Replay setup
+            </button>
             <label className="nomi-language-field">
               <span>Email language</span>
               <select
@@ -1581,8 +1586,10 @@ export default function Index() {
                     >
                       <span className="nomi-flow-count">{readyInFlow}/{flowTemplates.length}</span>
                       <span className="nomi-flow-group-copy"><strong>{flow.name}</strong><i aria-hidden="true" /></span>
-                      <span className="nomi-flow-group-status">{readyInFlow} OF {flowTemplates.length}</span>
-                      <span className="nomi-flow-chevron" aria-hidden="true">⌄</span>
+                      <span className="nomi-flow-group-toggle">
+                        {readyInFlow} of {flowTemplates.length}
+                        <FlowChevronIcon />
+                      </span>
                     </button>
 
                     {isExpanded ? (
@@ -1624,10 +1631,19 @@ export default function Index() {
               <div className="nomi-flow-panel-label" id="nomi-flow-rules-title">{selectedFlow.name} — triggers &amp; funnel</div>
               <p className="nomi-reference-best-practice">All Nomi triggers are based on the industry&apos;s best practices</p>
               <div className="nomi-flow-rule-grid">
-                <div><strong>Added when</strong><p>{selectedFlow.trigger}</p></div>
-                <div><strong>Removed when</strong><p>{selectedFlow.stop}</p></div>
+                <div>
+                  <strong><RuleAddedIcon /> Added when</strong>
+                  <p>{selectedFlow.trigger}</p>
+                </div>
+                <div>
+                  <strong><RuleRemovedIcon /> Removed when</strong>
+                  <p>{selectedFlow.stop}</p>
+                </div>
               </div>
-              <label className="nomi-reference-new-contacts"><input type="checkbox" /> Only send to new contacts</label>
+              <label className="nomi-reference-new-contacts">
+                <input type="checkbox" />
+                Only send to new contacts
+              </label>
               <div className="nomi-reference-timing-list">
                 {referenceTemplates
                   .filter(({ flowId }) => flowId === selectedFlow.id)
@@ -1773,33 +1789,138 @@ function CampaignDraftPreview({
   );
 }
 
-const ONBOARDING_TONE_OPTIONS: { code: EmailTone; name: string; example: string }[] = [
-  { code: "warm-plain", name: "Warm & plain", example: "Thank you, Ananya — it's on the way" },
-  { code: "bright-bubbly", name: "Bright & bubbly", example: "Your order's on the way — yay!" },
-  { code: "calm-minimal", name: "Calm & minimal", example: "Order confirmed." },
+const ONBOARDING_TONE_OPTIONS: {
+  code: EmailTone;
+  name: string;
+  example: string;
+  hue: "cyan" | "magenta" | "neutral";
+}[] = [
+  { code: "warm-plain", name: "Warm & plain", example: "Thank you, Ananya — it's on the way", hue: "cyan" },
+  { code: "bright-bubbly", name: "Bright & bubbly", example: "Your order's on the way — yay!", hue: "magenta" },
+  { code: "calm-minimal", name: "Calm & minimal", example: "Order confirmed.", hue: "neutral" },
 ];
+
+const ONBOARDING_FOUND_CARDS: {
+  tag: string;
+  hue: "cyan" | "magenta" | "gold" | "neutral";
+  rotate: string;
+  offset: string;
+}[] = [
+  { tag: "24 items", hue: "cyan", rotate: "-8deg", offset: "-150px" },
+  { tag: "your colors", hue: "magenta", rotate: "-2deg", offset: "-40px" },
+  { tag: "your fonts", hue: "gold", rotate: "4deg", offset: "70px" },
+  { tag: "your tone", hue: "neutral", rotate: "9deg", offset: "180px" },
+];
+
+const ONBOARDING_ORBIT_CHIPS: {
+  hue: "cyan" | "magenta" | "gold" | "neutral" | "cyan-deep";
+  size: number;
+  x: number;
+  y: number;
+  duration: number;
+  reverse: boolean;
+  delay: number;
+}[] = [
+  { hue: "cyan", size: 46, x: -70, y: -70, duration: 10, reverse: false, delay: 280 },
+  { hue: "magenta", size: 38, x: 80, y: -30, duration: 13, reverse: true, delay: 560 },
+  { hue: "gold", size: 34, x: -90, y: 60, duration: 15, reverse: false, delay: 840 },
+  { hue: "neutral", size: 30, x: 75, y: 65, duration: 11, reverse: true, delay: 1120 },
+  { hue: "cyan-deep", size: 26, x: -16, y: -104, duration: 17, reverse: false, delay: 1400 },
+];
+
+const ONBOARDING_DAYS: { label: string; items: ("cyan" | "magenta" | "neutral")[] }[] = [
+  { label: "Day 0", items: ["cyan", "magenta"] },
+  { label: "Day 1", items: ["cyan"] },
+  { label: "Day 3", items: [] },
+  { label: "Day 7", items: ["neutral"] },
+  { label: "Day 10", items: ["cyan"] },
+  { label: "Day 14", items: [] },
+];
+
+const ONBOARDING_CHECKLIST: { name: string; hue: "cyan" | "magenta" }[] = [
+  { name: "Order confirmation", hue: "cyan" },
+  { name: "Shipping update", hue: "magenta" },
+  { name: "Abandoned cart", hue: "cyan" },
+  { name: "Refund confirmation", hue: "magenta" },
+  { name: "Review request", hue: "cyan" },
+];
+
+// All the reveal-chain delays in one place, in ms, so the rail's progress
+// fill (below) can be computed from the same numbers that actually drive
+// the timers instead of a second, hand-copied set that could drift out of
+// sync.
+const ONBOARDING_TIMING = {
+  welcomePause: 3900,
+  foundCardStep: 700,
+  foundCardSettle: 1800,
+  dayStep: 430,
+  daySettle: 1400,
+  tonePick: 1100,
+  generating: 2200,
+  checklistStep: 750,
+  finishPause: 1200,
+} as const;
+
+function OnboardingMarkIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M50 16 L14 30 L29 36 L50 16 Z" />
+      <path d="M29 36 L33 50 L50 16" />
+    </svg>
+  );
+}
+
+function OnboardingEnvelopeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round">
+      <rect x="2.5" y="5" width="19" height="14" rx="2" />
+      <path d="M3 6 L12 13.5 L21 6" />
+    </svg>
+  );
+}
+
+function OnboardingCheckIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="9" fill="currentColor" />
+      <path d="M5.8 10.3 L8.6 13.1 L14.2 7.3" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function OnboardingCloseIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M5 5 L15 15 M15 5 L5 15" />
+    </svg>
+  );
+}
 
 function NomiOnboarding({
   shopName,
-  shopDomain,
-  products,
   tone,
   onPickTone,
   onFinish,
 }: {
   shopName: string;
-  shopDomain: string;
-  products: DashboardProduct[];
   tone: EmailTone;
   onPickTone: (tone: EmailTone) => void;
   onFinish: () => void;
 }) {
   const [step, setStep] = useState(0);
+  const [foundN, setFoundN] = useState(0);
+  const [dayN, setDayN] = useState(0);
   const [pickedTone, setPickedTone] = useState<EmailTone | null>(null);
-  const [emailsReady, setEmailsReady] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [checkN, setCheckN] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
 
-  const isReady = step === 4 && emailsReady;
+  // Bumped at the start of every top-level action (a click, or unmount) so
+  // any timers still in flight from a previous chain become no-ops instead
+  // of firing into stale state — the same guard the approved mockup's own
+  // state machine uses.
+  const tokenRef = useRef(0);
+
   const activeTone = pickedTone ?? tone;
 
   useEffect(() => {
@@ -1814,51 +1935,274 @@ function NomiOnboarding({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onFinish]);
 
-  // "Say hello" (0) and "Your tone" (3) advance from their own click
-  // handlers below; these two purely informational steps advance on their
-  // own after a pause.
   useEffect(() => {
-    const duration = ONBOARDING_AUTO_ADVANCE_MS[step];
-    if (!duration) return;
-    const timer = window.setTimeout(
-      () => setStep((current) => current + 1),
-      reducedMotion ? 0 : duration,
-    );
-    return () => window.clearTimeout(timer);
-  }, [step, reducedMotion]);
+    return () => {
+      tokenRef.current += 1;
+    };
+  }, []);
 
-  // Step 4 is two phases: a short "writing" pause, then the checklist and
-  // the button that actually closes onboarding and fires generation.
-  useEffect(() => {
-    if (step !== 4) return;
-    setEmailsReady(false);
-    const timer = window.setTimeout(() => setEmailsReady(true), reducedMotion ? 0 : 2200);
-    return () => window.clearTimeout(timer);
-  }, [step, reducedMotion]);
-
-  const pickTone = (nextTone: EmailTone) => {
-    setPickedTone(nextTone);
-    onPickTone(nextTone);
-    window.setTimeout(() => setStep(4), reducedMotion ? 0 : 850);
+  const after = (ms: number, fn: () => void) => {
+    const myToken = tokenRef.current;
+    window.setTimeout(() => {
+      if (myToken === tokenRef.current) fn();
+    }, reducedMotion ? 0 : ms);
   };
 
-  const { title, detail } = onboardingStepCopy(step, shopName, emailsReady);
-  const kicker = isReady ? "SETUP COMPLETE" : step === 4 ? "WRITING YOUR EMAILS" : `STEP ${step + 1} OF 4`;
+  const goStep4 = () => {
+    setStep(4);
+    setGenerating(true);
+    setCheckN(0);
+    after(ONBOARDING_TIMING.generating, () => {
+      setGenerating(false);
+      const revealCheck = (n: number) => {
+        setCheckN(n);
+        if (n < ONBOARDING_CHECKLIST.length) after(ONBOARDING_TIMING.checklistStep, () => revealCheck(n + 1));
+        else after(ONBOARDING_TIMING.finishPause, onFinish);
+      };
+      revealCheck(1);
+    });
+  };
+
+  const goStep2 = () => {
+    setStep(2);
+    setDayN(0);
+    const revealDay = (n: number) => {
+      setDayN(n);
+      if (n < ONBOARDING_DAYS.length) after(ONBOARDING_TIMING.dayStep, () => revealDay(n + 1));
+      else after(ONBOARDING_TIMING.daySettle, () => setStep(3));
+    };
+    revealDay(1);
+  };
+
+  useEffect(() => {
+    after(ONBOARDING_TIMING.welcomePause, connect);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const connect = () => {
+    tokenRef.current += 1;
+    setStep(1);
+    setFoundN(0);
+    const revealFound = (n: number) => {
+      setFoundN(n);
+      if (n < ONBOARDING_FOUND_CARDS.length) after(ONBOARDING_TIMING.foundCardStep, () => revealFound(n + 1));
+      else after(ONBOARDING_TIMING.foundCardSettle, goStep2);
+    };
+    revealFound(1);
+  };
+
+  const pickTone = (nextTone: EmailTone) => {
+    tokenRef.current += 1;
+    setPickedTone(nextTone);
+    onPickTone(nextTone);
+    after(ONBOARDING_TIMING.tonePick, goStep4);
+  };
+
+  // The rail's per-tab progress fill mirrors the timer chains above exactly
+  // (same constants) so a bar finishes filling at the same instant its step
+  // actually advances, instead of just snapping to full the moment a step
+  // becomes active.
+  const tabFillMs: Partial<Record<number, number>> = {
+    0: ONBOARDING_TIMING.welcomePause,
+    1: ONBOARDING_TIMING.foundCardStep * (ONBOARDING_FOUND_CARDS.length - 1) + ONBOARDING_TIMING.foundCardSettle,
+    2: ONBOARDING_TIMING.dayStep * (ONBOARDING_DAYS.length - 1) + ONBOARDING_TIMING.daySettle,
+    3: ONBOARDING_TIMING.tonePick,
+    4:
+      ONBOARDING_TIMING.generating +
+      ONBOARDING_TIMING.checklistStep * (ONBOARDING_CHECKLIST.length - 1) +
+      ONBOARDING_TIMING.finishPause,
+  };
+
+  function renderStep(): React.ReactNode {
+    if (step === 0) {
+      return (
+        <div className="nomi-onboarding-step-inner" key="step-0">
+          <div className="nomi-onboarding-orbit" aria-hidden="true">
+            {ONBOARDING_ORBIT_CHIPS.map((chip) => (
+              <span
+                key={chip.hue}
+                className="nomi-onboarding-orbit-spin"
+                style={{
+                  animationDuration: `${chip.duration}s`,
+                  animationDirection: chip.reverse ? "reverse" : "normal",
+                } as React.CSSProperties}
+              >
+                <span
+                  className="nomi-onboarding-orbit-counter"
+                  style={{
+                    left: `calc(50% + ${chip.x}px)`,
+                    top: `calc(50% + ${chip.y}px)`,
+                    animationDuration: `${chip.duration}s`,
+                    // Cancels the outer wrapper's spin so the chip itself stays
+                    // upright while still orbiting — same speed, opposite direction.
+                    animationDirection: chip.reverse ? "normal" : "reverse",
+                  } as React.CSSProperties}
+                >
+                  <span
+                    className="nomi-onboarding-orbit-fly"
+                    style={{
+                      "--nomi-orb-fx": `${chip.x * 1.4}px`,
+                      "--nomi-orb-fy": `${chip.y * 1.4}px`,
+                      animationDelay: `${chip.delay}ms`,
+                    } as React.CSSProperties}
+                  >
+                    <span
+                      className={`nomi-onboarding-orbit-chip is-${chip.hue}`}
+                      style={{ width: chip.size, height: chip.size }}
+                    />
+                  </span>
+                </span>
+              </span>
+            ))}
+            <span className="nomi-onboarding-orbit-center">
+              <OnboardingMarkIcon />
+            </span>
+          </div>
+          <div className="nomi-onboarding-copy is-orbit-copy">
+            <h1 id="nomi-onboarding-title">Welcome, {shopName}.</h1>
+            <p>Shopify already told us who you are. Let&rsquo;s get your emails ready.</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (step === 1) {
+      return (
+        <div className="nomi-onboarding-step-inner" key="step-1">
+          <div className="nomi-onboarding-found" aria-hidden="true">
+            {ONBOARDING_FOUND_CARDS.slice(0, foundN).map((card) => (
+              <div
+                key={card.tag}
+                className="nomi-onboarding-found-card"
+                style={{ marginLeft: card.offset, "--nomi-onb-rot": card.rotate } as React.CSSProperties}
+              >
+                <div className={`nomi-onboarding-found-swatch is-${card.hue}`} />
+                <span className={`nomi-onboarding-found-tag is-${card.hue}`}>{card.tag}</span>
+              </div>
+            ))}
+          </div>
+          <div className="nomi-onboarding-copy">
+            <h1 id="nomi-onboarding-title">Found you, {shopName}.</h1>
+            <p>Your products, your colors, your fonts — already loaded, nothing to upload.</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (step === 2) {
+      return (
+        <div className="nomi-onboarding-step-inner" key="step-2">
+          <div className="nomi-onboarding-days" aria-hidden="true">
+            {ONBOARDING_DAYS.map((day, index) => (
+              <div className="nomi-onboarding-day" key={day.label}>
+                <span>{day.label}</span>
+                <div className="nomi-onboarding-day-items">
+                  {index < dayN
+                    ? day.items.map((hue, itemIndex) => (
+                        <span key={itemIndex} className={`nomi-onboarding-day-mail is-${hue}`}>
+                          <OnboardingEnvelopeIcon />
+                        </span>
+                      ))
+                    : null}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="nomi-onboarding-copy">
+            <h1 id="nomi-onboarding-title">We&rsquo;ll know exactly when to say something.</h1>
+            <p>Five moments over two weeks, from checkout to &ldquo;how was it?&rdquo;</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (step === 3) {
+      return (
+        <div className="nomi-onboarding-step-inner is-tight" key="step-3">
+          <div className="nomi-onboarding-copy">
+            <h1 id="nomi-onboarding-title">What&rsquo;s your vibe?</h1>
+            <p>Pick a tone and we&rsquo;ll write like that everywhere.</p>
+          </div>
+          <div className="nomi-onboarding-tones" role="radiogroup" aria-label="Choose the tone for your emails">
+            {ONBOARDING_TONE_OPTIONS.map((option) => (
+              <button
+                key={option.code}
+                type="button"
+                role="radio"
+                aria-checked={activeTone === option.code}
+                className={`nomi-onboarding-tone${activeTone === option.code ? " is-chosen" : ""}`}
+                onClick={() => pickTone(option.code)}
+              >
+                <span className={`nomi-onboarding-tone-dot is-${option.hue}`} aria-hidden="true" />
+                <span className="nomi-onboarding-tone-copy">
+                  <strong>{option.name}</strong>
+                  <em>“{option.example}”</em>
+                </span>
+                {activeTone === option.code ? (
+                  <span className="nomi-onboarding-tone-check" aria-hidden="true">
+                    <OnboardingCheckIcon />
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (generating) {
+      return (
+        <div className="nomi-onboarding-step-inner is-tight" key="step-4-loading">
+          <span className="nomi-onboarding-icon is-small" aria-hidden="true">
+            <OnboardingMarkIcon />
+          </span>
+          <div className="nomi-onboarding-copy">
+            <h1 id="nomi-onboarding-title">Writing your five emails…</h1>
+            <p>Pulling in your products, your colors, and the tone you picked.</p>
+          </div>
+          <div className="nomi-onboarding-progress-track" aria-hidden="true">
+            <span className="nomi-onboarding-progress-fill" />
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="nomi-onboarding-step-inner" key="step-4-ready">
+        <div className="nomi-onboarding-checklist" aria-hidden="true">
+          {ONBOARDING_CHECKLIST.map((item, index) => (
+            <div key={item.name} className={`nomi-onboarding-check-row${index < checkN ? " is-on" : ""}`}>
+              <span className="nomi-onboarding-check-mark-slot">
+                {index < checkN ? (
+                  <span className={`nomi-onboarding-check-mark is-${item.hue}`}>
+                    <OnboardingCheckIcon />
+                  </span>
+                ) : (
+                  <span className="nomi-onboarding-check-empty" />
+                )}
+              </span>
+              <strong>{item.name}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="nomi-onboarding-copy">
+          <h1 id="nomi-onboarding-title">Five emails, ready when you are.</h1>
+          <p>Nothing sends until you say go.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className="nomi-onboarding" aria-labelledby="nomi-onboarding-title">
-      <section
-        className={`nomi-onboarding-card${isReady ? " is-ready" : ""}`}
-        aria-live="polite"
-        style={
-          {
-            // Only steps 1 and 2 auto-advance on a real timer; the tab
-            // fill for the click-driven steps (0, 3, 4) is decorative
-            // chrome, same as the old flow's terminal step always was.
-            "--nomi-step-duration": `${ONBOARDING_AUTO_ADVANCE_MS[step] ?? 900}ms`,
-          } as React.CSSProperties
-        }
-      >
+      <div className="nomi-onboarding-brand">
+        <span className="nomi-onboarding-mark" aria-hidden="true">
+          <OnboardingMarkIcon />
+        </span>
+        <span className="nomi-onboarding-wordmark">Nomi</span>
+      </div>
+
+      <section className="nomi-onboarding-card" aria-live="polite">
         <div className="nomi-setup-header">
           <div>
             <strong>Setting up Nomi</strong>
@@ -1870,212 +2214,45 @@ function NomiOnboarding({
             onClick={onFinish}
             aria-label="Close setup"
           >
-            <span aria-hidden="true">×</span>
+            <OnboardingCloseIcon />
           </button>
         </div>
 
         <div className="nomi-setup-tabs" aria-label={`Setup screen ${step + 1} of 5`}>
-          {ONBOARDING_RAIL.map((label, index) => (
-            <div
-              className={`${index === step ? "is-active" : ""}${index < step ? " is-complete" : ""}`}
-              key={label}
-            >
-              <span>{label}</span>
-              <i aria-hidden="true" />
-            </div>
-          ))}
+          {ONBOARDING_RAIL.map((label, index) => {
+            const isActive = index === step;
+            const isComplete = index < step;
+            // Step 3 waits on a tone pick before it has a fixed duration to
+            // animate against — it stays empty until one is chosen.
+            const isFilling = isActive && (index !== 3 || pickedTone !== null);
+            return (
+              <div
+                className={`${isActive ? "is-active" : ""}${isComplete ? " is-complete" : ""}${isFilling ? " is-filling" : ""}`}
+                key={`${label}-${isActive}-${isFilling}`}
+                style={
+                  isFilling
+                    ? ({ "--nomi-tab-duration": `${tabFillMs[index]}ms` } as React.CSSProperties)
+                    : undefined
+                }
+              >
+                <span>{label}</span>
+                <i aria-hidden="true" />
+              </div>
+            );
+          })}
         </div>
 
-        <div className={`nomi-setup-body${isReady ? " is-ready" : ""}`} key={`${step}-${emailsReady}`}>
-          <div className="nomi-onboarding-visual">
-            <OnboardingVisual
-              step={step}
-              products={products}
-              shopDomain={shopDomain}
-              tone={activeTone}
-              emailsReady={emailsReady}
-              onPickTone={pickTone}
-            />
-          </div>
-
-          <div className="nomi-onboarding-copy">
-            <p className="nomi-onboarding-kicker">{kicker}</p>
-            <h1 id="nomi-onboarding-title">{title}</h1>
-            <p>{detail}</p>
-          </div>
-
-          {step === 0 ? (
-            <div className="nomi-onboarding-confirm">
-              <input
-                className="nomi-onboarding-confirm-input"
-                type="text"
-                value={shopDomain}
-                readOnly
-                aria-label="Your Shopify store"
-              />
-              <button className="nomi-onboarding-primary" type="button" onClick={() => setStep(1)}>
-                Say hello
-                <span aria-hidden="true">→</span>
-              </button>
-            </div>
-          ) : isReady ? (
-            <button className="nomi-onboarding-primary" type="button" onClick={onFinish}>
-              See your emails
-              <span aria-hidden="true">→</span>
-            </button>
-          ) : step === 1 || step === 2 ? (
-            <span className="nomi-setup-status" aria-hidden="true">
-              {step === 1 ? "LOOKING" : "SCHEDULING"}
-            </span>
-          ) : null}
+        <div className="nomi-setup-body">
+          <div className="nomi-onboarding-step">{renderStep()}</div>
         </div>
       </section>
+
+      {step < 4 ? (
+        <button className="nomi-onboarding-skip" type="button" onClick={onFinish}>
+          Skip setup
+        </button>
+      ) : null}
     </main>
-  );
-}
-
-function OnboardingVisual({
-  step,
-  products,
-  shopDomain,
-  tone,
-  emailsReady,
-  onPickTone,
-}: {
-  step: number;
-  products: DashboardProduct[];
-  shopDomain: string;
-  tone: EmailTone;
-  emailsReady: boolean;
-  onPickTone: (tone: EmailTone) => void;
-}) {
-  if (step === 0) {
-    return (
-      <div className="nomi-store-scan" aria-hidden="true">
-        <div className="nomi-browser-frame">
-          <div className="nomi-browser-bar">
-            <span><i /><i /><i /></span>
-            <em>{shopDomain}</em>
-          </div>
-          <div className="nomi-browser-hero" />
-          <div className="nomi-browser-products">
-            {[0, 1, 2, 3].map((index) => {
-              const product = products[index];
-              return product?.imageUrl ? (
-                <img key={product.id} src={product.imageUrl} alt="" />
-              ) : (
-                <span key={index} />
-              );
-            })}
-          </div>
-          <div className="nomi-scan-line" />
-        </div>
-        <div className="nomi-found-note">{products.length || 5} PRODUCTS</div>
-      </div>
-    );
-  }
-
-  if (step === 1) {
-    // Real products stand in for the mockup's "found" tags — no fake
-    // colors/fonts claim, since real brand-asset extraction isn't
-    // available yet (see DECISIONS.md, 2026-08-17).
-    const foundLabels = ["IN YOUR SHOP", "REAL PRICES", "READY TO SEND", "YOUR VOICE"];
-    return (
-      <div className="nomi-proof-sheet" aria-hidden="true">
-        <p>WHAT NOMI FOUND</p>
-        <div>
-          {foundLabels.map((label, index) => (
-            <article key={label} style={{ "--proof-index": index } as React.CSSProperties}>
-              <span>{label}</span>
-              {products[index]?.imageUrl ? (
-                <img src={products[index].imageUrl} alt="" />
-              ) : (
-                <i className={`proof-tone-${index}`} />
-              )}
-              <b />
-              <em />
-              <button tabIndex={-1} type="button" aria-hidden="true" />
-            </article>
-          ))}
-        </div>
-        <footer>Real products, real prices, nothing invented</footer>
-      </div>
-    );
-  }
-
-  if (step === 2) {
-    const days = ["DAY 0", "DAY 1", "DAY 3", "DAY 7", "DAY 10", "DAY 14"];
-    return (
-      <div className="nomi-trigger-calendar" aria-hidden="true">
-        <div className="nomi-trigger-days">
-          {days.map((day) => <span key={day}>{day}</span>)}
-        </div>
-        <div className="nomi-trigger-grid">
-          {days.map((day, index) => (
-            <div key={day}>
-              {index !== 2 && index !== 5 ? <i className={`tone-${index}`} /> : null}
-              {index === 0 ? <i className="tone-magenta second" /> : null}
-            </div>
-            ))}
-        </div>
-        <p>Five journeys, timed behind what a customer does</p>
-      </div>
-    );
-  }
-
-  if (step === 3) {
-    return (
-      <div className="nomi-tone-picker" role="radiogroup" aria-label="Choose the tone for your emails">
-        {ONBOARDING_TONE_OPTIONS.map((option) => (
-          <button
-            key={option.code}
-            type="button"
-            role="radio"
-            aria-checked={tone === option.code}
-            className={`nomi-tone-option${tone === option.code ? " is-chosen" : ""}`}
-            onClick={() => onPickTone(option.code)}
-          >
-            <span className="nomi-tone-dot" aria-hidden="true" />
-            <span className="nomi-tone-copy">
-              <strong>{option.name}</strong>
-              <em>“{option.example}”</em>
-            </span>
-            {tone === option.code ? (
-              <span className="nomi-tone-check" aria-hidden="true">✓</span>
-            ) : null}
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  if (!emailsReady) {
-    return (
-      <div className="nomi-writing-emails" aria-hidden="true">
-        <span className="nomi-writing-mark"><i /><i /><i /></span>
-        <div className="nomi-writing-bar"><b /></div>
-      </div>
-    );
-  }
-
-  const readyItems = [
-    ["Order confirmation", "Ready"],
-    ["Shipping update", "Ready"],
-    ["Abandoned cart", "Ready"],
-    ["Refund confirmation", "Ready"],
-    ["Review request", "Ready"],
-  ];
-
-  return (
-    <div className="nomi-ready-list" aria-hidden="true">
-      {readyItems.map(([name, status], index) => (
-        <div key={name} style={{ "--ready-index": index } as React.CSSProperties}>
-          <span className="nomi-ready-check">✓</span>
-          <strong>{name}</strong>
-          <small>{status}</small>
-        </div>
-      ))}
-    </div>
   );
 }
 

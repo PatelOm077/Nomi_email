@@ -1,5 +1,3 @@
-import React from 'react';
-
 export function Button({ variant = 'primary', size = 'md', disabled = false, children, onClick, ...rest }) {
   const pad = size === 'sm' ? '6px 12px' : '10px 18px';
   const font = size === 'sm' ? 13 : 14;

@@ -9,8 +9,10 @@ import { EMAIL_LANGUAGES, type EmailLanguage, type EmailTone } from "./types";
 // contract enforcement mechanism.
 function stripCodeFence(text: string): string {
   const trimmed = text.trim();
-  const fenced = trimmed.match(/^```(?:html)?\n([\s\S]*?)\n```$/);
-  return fenced ? fenced[1] : trimmed;
+  return trimmed
+    .replace(/^```(?:html)?[^\S\r\n]*\r?\n/i, "")
+    .replace(/\r?\n```[^\S\r\n]*$/, "")
+    .trim();
 }
 
 // Shared by every email type's generator (order confirmation, abandoned

@@ -53,6 +53,15 @@ module.exports = {
       },
     },
 
+    // Static design references, not shipped React components. Keep normal
+    // JSX/a11y linting without adding runtime PropTypes solely for mockups.
+    {
+      files: ["Shopify email marketing app (1)/components/core/*.jsx"],
+      rules: {
+        "react/prop-types": "off",
+      },
+    },
+
     // Typescript
     {
       files: ["**/*.{ts,tsx}"],
@@ -91,6 +100,6 @@ module.exports = {
     },
   ],
   globals: {
-    shopify: "readonly"
+    shopify: "readonly",
   },
 };

@@ -29,12 +29,12 @@ Open the chosen file and change the first assignment:
 
 Then paste the complete file into the matching Shopify editor:
 
-| `email_type` | Shopify destination |
-| --- | --- |
+| `email_type`         | Shopify destination                                                                |
+| -------------------- | ---------------------------------------------------------------------------------- |
 | `order_confirmation` | Settings → Notifications → Customer notifications → Order confirmation → Edit code |
-| `return_refund` | Settings → Notifications → Customer notifications → Order refund → Edit code |
-| `abandoned_cart` | Marketing → Automations → Abandoned checkout/cart → Edit email → Code your own |
-| `newsletter` | Marketing → Campaigns → Shopify Messaging → Code your own |
+| `return_refund`      | Settings → Notifications → Customer notifications → Order refund → Edit code       |
+| `abandoned_cart`     | Marketing → Automations → Abandoned checkout/cart → Edit email → Code your own     |
+| `newsletter`         | Marketing → Campaigns → Shopify Messaging → Code your own                          |
 
 For transactional notifications, set the email subject separately in Shopify.
 Suggested subjects:
@@ -49,6 +49,11 @@ branches include `unsubscribe_url` and the open-tracking block.
 
 Open `preview.html` in a browser. Use the email-type picker to compare all three
 directions at desktop and phone widths.
+
+Run `npm test` from the repository root to render every design with both
+Shopify abandonment object shapes and exercise all preview picker and width
+states. This automated check complements, but does not replace, Shopify's test
+email rendering.
 
 ## Before publishing
 

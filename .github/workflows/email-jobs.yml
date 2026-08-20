@@ -1,0 +1,83 @@
+name: Process email jobs
+
+on:
+  schedule:
+    # GitHub's shortest schedule interval is five minutes. Start away from
+    # the top of the hour, then make five one-minute ticks inside the job.
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: nomi-email-job-worker
+  cancel-in-progress: false
+
+jobs:
+  process-email-jobs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      NOMI_APP_URL: ${{ vars.NOMI_APP_URL }}
+      EMAIL_JOB_SECRET: ${{ secrets.EMAIL_JOB_SECRET }}
+    steps:
+      - name: Call the email worker
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          : "${NOMI_APP_URL:?Set the NOMI_APP_URL repository variable.}"
+          : "${EMAIL_JOB_SECRET:?Set the EMAIL_JOB_SECRET repository secret.}"
+
+          case "$NOMI_APP_URL" in
+            https://*) ;;
+            *) echo "::error::NOMI_APP_URL must be an https:// URL."; exit 1 ;;
+          esac
+
+          endpoint="${NOMI_APP_URL%/}/tasks/email-jobs"
+          tick_count=5
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tick_count=1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          for tick in $(seq 1 "$tick_count"); do
+            started_at=$SECONDS
+            echo "Calling email worker (tick ${tick}/${tick_count})."
+
+            if ! status_code="$(curl \
+              --silent \
+              --show-error \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --connect-timeout 10 \
+              --max-time 180 \
+              --retry 2 \
+              --retry-delay 2 \
+              --retry-connrefused \
+              --request POST \
+              --header "Authorization: Bearer ${EMAIL_JOB_SECRET}" \
+              "$endpoint")"; then
+              echo "::error::The email worker request failed before receiving a response."
+              exit 1
+            fi
+
+            if [[ ! "$status_code" =~ ^2[0-9][0-9]$ ]]; then
+              echo "::error::The email worker returned HTTP ${status_code}."
+              cat "$response_file"
+              exit 1
+            fi
+
+            printf 'Worker response: '
+            cat "$response_file"
+            printf '\n'
+
+            if (( tick < tick_count )); then
+              elapsed=$((SECONDS - started_at))
+              if (( elapsed < 60 )); then
+                sleep $((60 - elapsed))
+              fi
+            fi
+          done

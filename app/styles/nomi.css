@@ -163,14 +163,46 @@
   font-size: 13px;
   color: var(--nomi-neutral-700);
 }
+.nomi-replay-setup {
+  padding: 6px 12px;
+  font: 13px var(--nomi-font-ui);
+  color: var(--nomi-neutral-700);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--nomi-ink) 16%, transparent);
+  border-radius: var(--nomi-radius-md);
+  cursor: pointer;
+}
+.nomi-replay-setup:hover {
+  color: var(--nomi-ink);
+  border-color: color-mix(in srgb, var(--nomi-ink) 28%, transparent);
+}
 .nomi-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   min-height: 36px;
   padding: 7px 30px 7px 10px;
   font: 14px var(--nomi-font-ui);
   color: var(--nomi-ink);
-  background: var(--nomi-white);
+  background: var(--nomi-white)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%237d7979' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8 L10 12 L14 8'/%3E%3C/svg%3E")
+    no-repeat right 9px center;
+  background-size: 11px;
   border: 1px solid color-mix(in srgb, var(--nomi-ink) 16%, transparent);
   border-radius: var(--nomi-radius-md);
+  cursor: pointer;
+}
+.nomi-select:hover {
+  border-color: color-mix(in srgb, var(--nomi-ink) 45%, transparent);
+}
+.nomi-select:focus-visible {
+  border-color: var(--nomi-cyan);
+  box-shadow: 0 0 0 1px var(--nomi-cyan);
+  outline: none;
+}
+.nomi-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* — template cards — */
@@ -402,572 +434,6 @@
   outline-offset: 2px;
 }
 
-/* — first-run setup —
-   The pacing takes its cue from the reference, while the visual language is
-   Nomi's own: paper, ink, editorial type, and a single cyan action colour. */
-.nomi-onboarding {
-  min-height: 100vh;
-  box-sizing: border-box;
-  padding: 34px 40px 28px;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  place-items: center;
-  overflow: hidden;
-  position: relative;
-  color: var(--nomi-ink);
-  background:
-    radial-gradient(circle at 18% 16%, color-mix(in srgb, var(--nomi-cyan) 5%, transparent) 0 2px, transparent 3px),
-    linear-gradient(115deg, transparent 0 48%, color-mix(in srgb, var(--nomi-ink) 3%, transparent) 48% 48.1%, transparent 48.1%),
-    var(--nomi-paper);
-  background-size: 42px 42px, 100% 100%, auto;
-  font-family: var(--nomi-font-ui);
-}
-.nomi-onboarding::before,
-.nomi-onboarding::after {
-  content: "";
-  position: absolute;
-  width: 420px;
-  height: 420px;
-  border: 1px solid color-mix(in srgb, var(--nomi-ink) 6%, transparent);
-  border-radius: 50%;
-  pointer-events: none;
-}
-.nomi-onboarding::before {
-  left: -300px;
-  top: 20%;
-}
-.nomi-onboarding::after {
-  right: -310px;
-  bottom: 2%;
-}
-.nomi-onboarding-brand {
-  justify-self: start;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font: 600 23px/1 var(--nomi-font-heading);
-  letter-spacing: -0.03em;
-}
-.nomi-onboarding-mark {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  color: var(--nomi-paper);
-  background: var(--nomi-ink);
-  border-radius: var(--nomi-radius-lg);
-}
-.nomi-onboarding-card {
-  width: min(520px, calc(100vw - 40px));
-  min-height: 570px;
-  box-sizing: border-box;
-  padding: 30px 42px 34px;
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--nomi-white);
-  border: 1px solid color-mix(in srgb, var(--nomi-ink) 8%, transparent);
-  border-radius: var(--nomi-radius-lg);
-  box-shadow: 0 24px 70px color-mix(in srgb, var(--nomi-ink) 12%, transparent);
-  animation: nomi-card-enter 420ms ease-out both;
-}
-.nomi-onboarding-card.is-ready {
-  min-height: 600px;
-}
-.nomi-onboarding-close {
-  width: 32px;
-  height: 32px;
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  color: var(--nomi-neutral-600);
-  background: var(--nomi-neutral-100);
-  border: 0;
-  border-radius: 50%;
-  font: 400 20px/1 var(--nomi-font-ui);
-  cursor: pointer;
-}
-.nomi-onboarding-close:hover {
-  color: var(--nomi-ink);
-  background: var(--nomi-neutral-200);
-}
-.nomi-onboarding-shop {
-  align-self: flex-start;
-  max-width: calc(100% - 42px);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.nomi-onboarding-shop span {
-  overflow: hidden;
-  color: var(--nomi-ink);
-  font-size: 13px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.nomi-onboarding-shop small {
-  color: var(--nomi-neutral-600);
-  font-size: 11px;
-}
-.nomi-onboarding-visual {
-  width: 100%;
-  height: 245px;
-  display: grid;
-  place-items: center;
-  animation: nomi-scene-enter 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.nomi-onboarding-copy {
-  max-width: 390px;
-  text-align: center;
-}
-.nomi-onboarding-kicker {
-  margin: 0 0 8px;
-  color: var(--nomi-cyan-700) !important;
-  font-size: 10px !important;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-}
-.nomi-onboarding-copy h1 {
-  margin: 0;
-  font: 600 30px/1.12 var(--nomi-font-heading);
-  letter-spacing: -0.035em;
-}
-.nomi-onboarding-copy > p:last-child {
-  margin: 10px 0 0;
-  color: var(--nomi-neutral-700);
-  font-size: 13px;
-  line-height: 1.5;
-}
-.nomi-onboarding-progress {
-  width: 116px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
-}
-.nomi-onboarding-progress span {
-  height: 3px;
-  overflow: hidden;
-  position: relative;
-  background: var(--nomi-neutral-200);
-  border-radius: 2px;
-}
-.nomi-onboarding-progress span.is-complete::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--nomi-cyan);
-  transform-origin: left;
-  animation: nomi-progress-fill 2200ms linear both;
-}
-.nomi-onboarding-progress span:not(:last-child).is-complete:not(:last-of-type)::after {
-  animation-duration: 2200ms;
-}
-.nomi-onboarding-primary {
-  min-height: 42px;
-  padding: 10px 18px;
-  display: inline-flex;
-  align-items: center;
-  gap: 28px;
-  color: var(--nomi-white);
-  background: var(--nomi-cyan);
-  border: 0;
-  border-radius: var(--nomi-radius-md);
-  font: 700 13px var(--nomi-font-ui);
-  cursor: pointer;
-  animation: nomi-ready-item 360ms 650ms ease-out both;
-}
-.nomi-onboarding-primary:hover {
-  background: var(--nomi-cyan-700);
-}
-.nomi-onboarding-skip {
-  z-index: 1;
-  padding: 8px 12px;
-  color: var(--nomi-neutral-700);
-  background: transparent;
-  border: 0;
-  font: 600 12px var(--nomi-font-ui);
-  cursor: pointer;
-}
-.nomi-onboarding-skip:hover {
-  color: var(--nomi-ink);
-}
-
-/* Store scan scene */
-.nomi-store-scan {
-  width: 270px;
-  height: 190px;
-  position: relative;
-}
-.nomi-browser-frame {
-  width: 238px;
-  height: 164px;
-  box-sizing: border-box;
-  overflow: hidden;
-  position: absolute;
-  inset: 4px auto auto 0;
-  background: var(--nomi-white);
-  border: 1px solid var(--nomi-neutral-300);
-  border-radius: 4px;
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--nomi-ink) 13%, transparent);
-  transform: rotate(-1.5deg);
-}
-.nomi-browser-bar {
-  height: 22px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 8px;
-  background: var(--nomi-neutral-100);
-  border-bottom: 1px solid var(--nomi-neutral-200);
-}
-.nomi-browser-bar i {
-  width: 4px;
-  height: 4px;
-  background: var(--nomi-neutral-300);
-  border-radius: 50%;
-}
-.nomi-browser-hero {
-  height: 58px;
-  margin: 10px;
-  background: linear-gradient(135deg, var(--nomi-neutral-200), var(--nomi-neutral-100));
-}
-.nomi-browser-products {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  padding: 0 10px;
-}
-.nomi-browser-products img,
-.nomi-browser-products span {
-  width: 100%;
-  height: 54px;
-  object-fit: cover;
-  background: var(--nomi-neutral-200);
-}
-.nomi-scan-line {
-  width: 100%;
-  height: 2px;
-  position: absolute;
-  left: 0;
-  top: 22px;
-  background: var(--nomi-cyan);
-  box-shadow: 0 0 12px var(--nomi-cyan);
-  animation: nomi-scan 1900ms ease-in-out infinite;
-}
-.nomi-found-note {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  padding: 9px 12px;
-  color: var(--nomi-cyan-800);
-  background: var(--nomi-cyan-100);
-  border: 1px solid var(--nomi-cyan-300);
-  border-radius: var(--nomi-radius-md);
-  font-size: 10px;
-  font-weight: 700;
-  box-shadow: var(--nomi-shadow-sm);
-  animation: nomi-note-enter 360ms 900ms ease-out both;
-}
-
-/* Email moment map scene */
-.nomi-flow-map {
-  width: 310px;
-  height: 190px;
-  position: relative;
-}
-.nomi-flow-node {
-  min-width: 58px;
-  min-height: 32px;
-  box-sizing: border-box;
-  padding: 10px 9px;
-  position: absolute;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  color: var(--nomi-neutral-700);
-  background: var(--nomi-white);
-  border: 1px solid var(--nomi-neutral-300);
-  border-radius: var(--nomi-radius-md);
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  box-shadow: var(--nomi-shadow-sm);
-  animation: nomi-node-enter 400ms ease-out both;
-}
-.nomi-flow-source {
-  left: 116px;
-  top: 76px;
-  color: var(--nomi-paper);
-  background: var(--nomi-ink);
-  border-color: var(--nomi-ink);
-}
-.nomi-flow-map .node-a { left: 0; top: 14px; animation-delay: 160ms; }
-.nomi-flow-map .node-b { right: 0; top: 14px; animation-delay: 260ms; }
-.nomi-flow-map .node-c { left: 0; bottom: 12px; animation-delay: 360ms; }
-.nomi-flow-map .node-d { right: 0; bottom: 12px; animation-delay: 460ms; }
-.nomi-flow-line {
-  height: 1px;
-  position: absolute;
-  left: 54px;
-  right: 54px;
-  top: 95px;
-  z-index: 1;
-  background: var(--nomi-cyan-300);
-  transform-origin: center;
-  animation: nomi-line-draw 600ms ease-out both;
-}
-.nomi-flow-line.line-a { transform: rotate(29deg); }
-.nomi-flow-line.line-b { transform: rotate(-29deg); }
-.nomi-flow-line.line-c { width: 1px; height: 72px; left: 145px; right: auto; top: 60px; }
-
-/* Writing scene */
-.nomi-writing-sheet {
-  width: 270px;
-  height: 182px;
-  box-sizing: border-box;
-  padding: 28px 30px;
-  position: relative;
-  background: #fbfbfa;
-  border: 1px solid var(--nomi-neutral-300);
-  box-shadow: 0 14px 34px color-mix(in srgb, var(--nomi-ink) 10%, transparent);
-}
-.nomi-writing-label {
-  margin-bottom: 20px;
-  color: var(--nomi-neutral-600);
-  font-size: 7px;
-  letter-spacing: 0.16em;
-}
-.nomi-writing-title {
-  margin-bottom: 16px;
-  font: 600 16px var(--nomi-font-heading);
-  animation: nomi-copy-enter 420ms 180ms ease-out both;
-}
-.nomi-writing-line {
-  width: 68%;
-  height: 5px;
-  margin-top: 7px;
-  background: var(--nomi-neutral-200);
-  animation: nomi-copy-enter 380ms 420ms ease-out both;
-}
-.nomi-writing-line.wide { width: 92%; }
-.nomi-writing-line.short { width: 46%; animation-delay: 620ms; }
-.nomi-writing-cursor {
-  width: 2px;
-  height: 13px;
-  position: absolute;
-  left: 129px;
-  bottom: 38px;
-  background: var(--nomi-cyan);
-  animation: nomi-cursor 700ms step-end infinite;
-}
-.nomi-writing-status {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  color: var(--nomi-cyan-700);
-  font-size: 8px;
-  font-weight: 700;
-}
-
-/* Template stack scene */
-.nomi-template-stack {
-  width: 280px;
-  height: 210px;
-  position: relative;
-}
-.nomi-template-paper {
-  width: 182px;
-  height: 196px;
-  box-sizing: border-box;
-  position: absolute;
-  left: 49px;
-  top: 2px;
-  background: var(--nomi-white);
-  border: 1px solid var(--nomi-neutral-300);
-  border-radius: 2px;
-  box-shadow: 0 10px 26px color-mix(in srgb, var(--nomi-ink) 10%, transparent);
-}
-.nomi-template-paper.paper-back {
-  transform: translateX(-38px) rotate(-7deg) scale(0.92);
-  background: var(--nomi-neutral-100);
-  animation: nomi-paper-left 480ms ease-out both;
-}
-.nomi-template-paper.paper-mid {
-  transform: translateX(38px) rotate(7deg) scale(0.92);
-  background: var(--nomi-cyan-100);
-  animation: nomi-paper-right 480ms ease-out both;
-}
-.nomi-template-paper.paper-front {
-  padding: 26px 22px;
-  z-index: 2;
-  animation: nomi-paper-front 480ms ease-out both;
-}
-.nomi-template-wordmark {
-  font: 600 10px/1.2 var(--nomi-font-heading);
-}
-.nomi-template-rule {
-  height: 1px;
-  margin: 14px 0;
-  background: var(--nomi-neutral-300);
-}
-.nomi-template-product {
-  display: flex;
-  gap: 10px;
-}
-.nomi-template-product img,
-.nomi-template-product span {
-  width: 42px;
-  height: 52px;
-  object-fit: cover;
-  background: var(--nomi-neutral-200);
-}
-.nomi-template-product i {
-  width: 74px;
-  height: 5px;
-  margin-top: 8px;
-  background: var(--nomi-neutral-200);
-  box-shadow: 0 12px 0 var(--nomi-neutral-200), 0 24px 0 var(--nomi-neutral-100);
-}
-.nomi-template-button {
-  width: 68px;
-  height: 18px;
-  margin-top: 20px;
-  background: var(--nomi-cyan);
-}
-
-/* Ready scene */
-.nomi-ready-list {
-  width: 315px;
-  padding: 8px 16px;
-  box-sizing: border-box;
-  background: var(--nomi-neutral-100);
-  border: 1px solid var(--nomi-neutral-200);
-  border-radius: var(--nomi-radius-md);
-}
-.nomi-ready-list > div {
-  min-height: 36px;
-  display: grid;
-  grid-template-columns: 18px 1fr auto;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid var(--nomi-neutral-200);
-  animation: nomi-ready-item 360ms calc(var(--ready-index) * 80ms) ease-out both;
-}
-.nomi-ready-list > div:last-child { border-bottom: 0; }
-.nomi-ready-check {
-  width: 15px;
-  height: 15px;
-  display: grid;
-  place-items: center;
-  color: var(--nomi-white);
-  background: var(--nomi-cyan);
-  border-radius: 50%;
-  font-size: 9px;
-  font-weight: 800;
-}
-.nomi-ready-list strong {
-  font-size: 10px;
-}
-.nomi-ready-list small {
-  color: var(--nomi-cyan-700);
-  font-size: 8px;
-  font-weight: 700;
-}
-
-@keyframes nomi-card-enter {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes nomi-scene-enter {
-  from { opacity: 0; transform: translateY(9px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes nomi-progress-fill {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
-}
-@keyframes nomi-scan {
-  0%, 100% { transform: translateY(4px); opacity: 0.4; }
-  50% { transform: translateY(126px); opacity: 1; }
-}
-@keyframes nomi-note-enter {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes nomi-node-enter {
-  from { opacity: 0; transform: scale(0.86); }
-  to { opacity: 1; transform: scale(1); }
-}
-@keyframes nomi-line-draw {
-  from { opacity: 0; clip-path: inset(0 50%); }
-  to { opacity: 1; clip-path: inset(0); }
-}
-@keyframes nomi-copy-enter {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-@keyframes nomi-cursor {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
-@keyframes nomi-paper-left {
-  from { opacity: 0; transform: translateX(0) rotate(0) scale(0.92); }
-  to { opacity: 1; transform: translateX(-38px) rotate(-7deg) scale(0.92); }
-}
-@keyframes nomi-paper-right {
-  from { opacity: 0; transform: translateX(0) rotate(0) scale(0.92); }
-  to { opacity: 1; transform: translateX(38px) rotate(7deg) scale(0.92); }
-}
-@keyframes nomi-paper-front {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes nomi-ready-item {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@media (max-width: 560px) {
-  .nomi-onboarding {
-    padding: 22px 20px 18px;
-  }
-  .nomi-onboarding-card,
-  .nomi-onboarding-card.is-ready {
-    min-height: 540px;
-    padding: 28px 24px 30px;
-  }
-  .nomi-onboarding-visual {
-    height: 220px;
-    transform: scale(0.92);
-  }
-  .nomi-onboarding-copy h1 {
-    font-size: 27px;
-  }
-  .nomi-replay-button {
-    width: 100%;
-    margin-left: 55px;
-    text-align: left;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .nomi-onboarding *,
-  .nomi-onboarding *::before,
-  .nomi-onboarding *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
-  }
-}
-
 /* — exact flow-editor reference treatment (2026-08-18) — */
 .nomi-flow-page-reference {
   padding: 26px 34px 70px;
@@ -1006,7 +472,10 @@
 .nomi-flow-page-reference .nomi-select {
   min-height: 30px;
   padding-block: 4px;
+  padding-right: 26px;
   font-size: 11px;
+  background-position: right 8px center;
+  background-size: 10px;
 }
 .nomi-flow-page-reference .nomi-flow-progress {
   min-width: 150px;
@@ -1156,7 +625,7 @@
 }
 .nomi-flow-page-reference .nomi-flow-group-head {
   min-height: 62px;
-  grid-template-columns: 38px minmax(0, 1fr) auto 16px;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   gap: 11px;
   padding: 10px 14px;
 }
@@ -1196,26 +665,34 @@
   display: block;
   background: #eae7e7;
 }
-.nomi-flow-page-reference .nomi-flow-group-status {
-  padding: 5px 10px;
-  color: #005f7a;
-  background: #dff6ff;
-  border-radius: 999px;
+.nomi-flow-page-reference .nomi-flow-group-toggle {
+  padding: 5px 9px;
   font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
-.nomi-flow-page-reference .tone-cart .nomi-flow-group-status {
+.nomi-flow-page-reference .tone-cart .nomi-flow-group-toggle {
   color: #d6006c;
+  border-color: color-mix(in srgb, #d6006c 40%, transparent);
+}
+.nomi-flow-page-reference .tone-cart .nomi-flow-group-head:hover .nomi-flow-group-toggle {
   background: #ffe5f2;
+  border-color: #d6006c;
 }
-.nomi-flow-page-reference .tone-care .nomi-flow-group-status {
+.nomi-flow-page-reference .tone-care .nomi-flow-group-toggle {
   color: #237447;
-  background: #e4f5eb;
+  border-color: color-mix(in srgb, #237447 40%, transparent);
 }
-.nomi-flow-page-reference .tone-winback .nomi-flow-group-status {
+.nomi-flow-page-reference .tone-care .nomi-flow-group-head:hover .nomi-flow-group-toggle {
+  background: #e4f5eb;
+  border-color: #237447;
+}
+.nomi-flow-page-reference .tone-winback .nomi-flow-group-toggle {
   color: #9a6800;
+  border-color: color-mix(in srgb, #9a6800 40%, transparent);
+}
+.nomi-flow-page-reference .tone-winback .nomi-flow-group-head:hover .nomi-flow-group-toggle {
   background: #fff2cf;
+  border-color: #9a6800;
 }
 .nomi-flow-page-reference .nomi-flow-email-list {
   padding: 0 14px 14px;
@@ -1307,8 +784,8 @@
   gap: 8px;
 }
 .nomi-flow-page-reference .nomi-flow-rule-grid > div {
-  min-height: 60px;
-  padding: 10px 12px;
+  min-height: 68px;
+  padding: 11px 13px;
   border-radius: 2px;
 }
 .nomi-flow-page-reference .nomi-flow-rule-grid strong {
@@ -1323,19 +800,46 @@
   line-height: 1.5;
 }
 .nomi-reference-new-contacts {
-  margin: 10px 0;
-  display: flex;
+  margin: 12px 0;
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 9px;
+  padding: 9px 12px;
   color: #444141;
-  font-size: 11px;
+  background: #ffffff;
+  border: 1px solid var(--nomi-neutral-300);
+  border-radius: var(--nomi-radius-md);
+  font-size: 12px;
   font-weight: 500;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+.nomi-reference-new-contacts:hover {
+  border-color: color-mix(in srgb, var(--nomi-ink) 32%, transparent);
 }
 .nomi-reference-new-contacts input {
-  width: 13px;
-  height: 13px;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
   margin: 0;
-  accent-color: #0088b0;
+  flex: none;
+  background-color: #ffffff;
+  border: 1.5px solid color-mix(in srgb, var(--nomi-ink) 38%, transparent);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.nomi-reference-new-contacts input:checked {
+  background-color: var(--nomi-cyan);
+  border-color: var(--nomi-cyan);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.3 L6.4 11 L12.5 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 10px;
+}
+.nomi-reference-new-contacts input:focus-visible {
+  outline: 2px solid var(--nomi-cyan);
+  outline-offset: 2px;
 }
 .nomi-reference-timing-list {
   overflow: hidden;
@@ -1558,12 +1062,6 @@
   }
   .nomi-flow-page-reference .nomi-flow-progress {
     min-width: 130px;
-  }
-  .nomi-flow-page-reference .nomi-flow-group-head {
-    grid-template-columns: 36px minmax(0, 1fr) 16px;
-  }
-  .nomi-flow-page-reference .nomi-flow-group-status {
-    display: none;
   }
   .nomi-flow-page-reference .nomi-flow-email-row {
     grid-template-columns: 1fr;
@@ -1840,7 +1338,7 @@
   width: 100%;
   min-height: 66px;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto 16px;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 11px 14px;
@@ -1887,15 +1385,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nomi-flow-group-status {
-  color: var(--nomi-neutral-700);
-  font-size: 10px;
-  font-weight: 700;
+.nomi-flow-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  color: var(--nomi-cyan-800);
+  background: var(--nomi-white);
+  border: 1px solid color-mix(in srgb, var(--nomi-cyan) 40%, transparent);
+  border-radius: var(--nomi-radius-md);
+  font: 700 10px var(--nomi-font-ui);
+  letter-spacing: 0.05em;
   white-space: nowrap;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.nomi-flow-group-head:hover .nomi-flow-group-toggle {
+  background: var(--nomi-cyan-100);
+  border-color: var(--nomi-cyan);
 }
 .nomi-flow-chevron {
-  color: var(--nomi-neutral-700);
-  font-size: 15px;
+  flex: none;
   transition: transform 160ms ease;
 }
 .nomi-flow-group-head[aria-expanded="true"] .nomi-flow-chevron {
@@ -2032,19 +1541,26 @@
 .nomi-flow-rule-grid > div {
   min-height: 74px;
   padding: 12px 14px;
-  background: var(--nomi-white);
+  background: color-mix(in srgb, var(--nomi-cyan) 4%, var(--nomi-white));
   border: 1px solid var(--nomi-neutral-300);
   border-top: 2px solid var(--nomi-cyan);
   border-radius: var(--nomi-radius-md);
 }
 .nomi-flow-rule-grid > div:last-child {
+  background: color-mix(in srgb, var(--nomi-magenta) 4%, var(--nomi-white));
   border-top-color: var(--nomi-magenta);
 }
 .nomi-flow-rule-grid strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--nomi-cyan-800);
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+.nomi-flow-rule-grid strong svg {
+  flex: none;
 }
 .nomi-flow-rule-grid > div:last-child strong {
   color: var(--nomi-magenta);
@@ -2313,12 +1829,6 @@
     grid-column: 2;
     justify-self: start;
   }
-  .nomi-flow-group-head {
-    grid-template-columns: 38px minmax(0, 1fr) 16px;
-  }
-  .nomi-flow-group-status {
-    display: none;
-  }
   .nomi-flow-email-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -2387,713 +1897,571 @@
   }
 }
 
-/* — onboarding specification, corrected PDF (2026-08-18) — */
+/* — onboarding, pixel-matched to the approved mockup (2026-08-19) —
+   Every step renders as one self-contained block (icon/visual, heading,
+   paragraph, and its own action when it has one) rather than a fixed
+   visual/copy split, since the mockup's steps don't share one layout. */
 .nomi-onboarding {
   min-height: 100vh;
-  padding: 52px 40px;
-  display: grid;
-  grid-template-rows: 1fr;
-  place-items: center;
+  box-sizing: border-box;
+  padding: 44px 24px 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   background: var(--nomi-paper);
+  color: var(--nomi-ink);
+  font-family: var(--nomi-font-heading);
 }
-.nomi-onboarding::before,
-.nomi-onboarding::after {
-  content: none;
+.nomi-onboarding-brand {
+  width: 100%;
+  max-width: 760px;
+  margin-bottom: 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nomi-onboarding-mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--nomi-cyan);
+  border-radius: 8px;
+}
+.nomi-onboarding-wordmark {
+  font: 600 20px/1 var(--nomi-font-heading);
+  letter-spacing: -0.02em;
 }
 .nomi-onboarding-card,
 .nomi-onboarding-card.is-ready {
-  width: min(840px, calc(100vw - 48px));
-  min-height: 635px;
+  width: 100%;
+  max-width: 760px;
+  min-height: 0;
   padding: 0;
   align-items: stretch;
   justify-content: flex-start;
   overflow: hidden;
   background: var(--nomi-white);
-  border: 1px solid var(--nomi-neutral-300);
-  border-radius: var(--nomi-radius-lg);
-  box-shadow: 0 2px 5px color-mix(in srgb, var(--nomi-ink) 14%, transparent);
+  border-radius: 10px;
+  box-shadow: var(--nomi-shadow-md);
+  animation: none;
 }
 .nomi-setup-header {
-  min-height: 58px;
-  box-sizing: border-box;
-  padding: 0 26px;
+  min-height: 0;
+  padding: 18px 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   border-bottom: 1px solid var(--nomi-neutral-200);
 }
 .nomi-setup-header > div {
   min-width: 0;
   display: flex;
   align-items: baseline;
-  gap: 14px;
+  gap: 10px;
 }
 .nomi-setup-header strong {
   flex: none;
-  font-size: 15px;
+  font: 600 17px var(--nomi-font-heading);
+  letter-spacing: -0.01em;
 }
 .nomi-setup-header span {
   overflow: hidden;
-  color: var(--nomi-neutral-700);
-  font-size: 14px;
+  color: var(--nomi-neutral-600);
+  font: italic 15px var(--nomi-font-heading);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nomi-setup-header small {
-  color: var(--nomi-neutral-600);
-  font-size: 11px;
-}
 .nomi-onboarding-close {
-  width: 30px;
-  height: 30px;
+  width: auto;
+  height: auto;
   position: static;
   flex: none;
+  padding: 6px;
+  margin: -6px;
   color: var(--nomi-neutral-600);
   background: transparent;
-  border-radius: 50%;
+  border: 0;
+  border-radius: 0;
 }
 .nomi-onboarding-close:hover {
-  background: var(--nomi-neutral-100);
+  color: var(--nomi-ink);
+  background: transparent;
 }
+.nomi-onboarding-close svg { display: block; }
+
 .nomi-setup-tabs {
-  min-height: 62px;
-  box-sizing: border-box;
-  padding: 16px 32px 0;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
+  min-height: 0;
+  padding: 0 28px;
+  display: flex;
+  gap: 0;
   border-bottom: 1px solid var(--nomi-neutral-200);
 }
 .nomi-setup-tabs > div {
+  flex: 1;
   min-width: 0;
+  padding: 14px 4px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 9px;
 }
 .nomi-setup-tabs span {
+  overflow: hidden;
   color: color-mix(in srgb, var(--nomi-neutral-600) 55%, transparent);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font: 600 10px var(--nomi-font-ui);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .nomi-setup-tabs i {
   height: 3px;
   overflow: hidden;
   position: relative;
   background: var(--nomi-neutral-200);
-  border-radius: 1px 1px 0 0;
+  border-radius: 2px;
+}
+.nomi-setup-tabs i::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--nomi-cyan);
+  border-radius: 2px;
 }
 .nomi-setup-tabs .is-active span,
 .nomi-setup-tabs .is-complete span {
   color: var(--nomi-ink);
 }
-.nomi-setup-tabs .is-complete i {
-  background: var(--nomi-cyan);
+.nomi-setup-tabs .is-complete i::after {
+  width: 100%;
 }
 .nomi-setup-tabs .is-active i::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--nomi-cyan);
-  transform: scaleX(0);
-  transform-origin: left;
-  animation: nomi-tab-progress var(--nomi-step-duration) linear both;
+  background: var(--nomi-magenta);
 }
-.nomi-onboarding-card.is-ready .nomi-setup-tabs .is-active i {
-  background: var(--nomi-cyan);
+.nomi-setup-tabs .is-active.is-filling i::after {
+  animation: nomi-tab-fill var(--nomi-tab-duration, 3s) linear forwards;
 }
-.nomi-onboarding-card.is-ready .nomi-setup-tabs .is-active i::after {
-  animation: none;
-  transform: scaleX(1);
+@keyframes nomi-tab-fill {
+  from { width: 0%; }
+  to { width: 100%; }
 }
+
 .nomi-setup-body {
-  min-height: 514px;
+  min-height: 0;
   box-sizing: border-box;
-  padding: 38px 54px 34px;
-  position: relative;
+  padding: 44px 52px 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  animation: nomi-scene-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.nomi-setup-body.is-ready {
-  padding-top: 44px;
-}
-.nomi-onboarding-visual {
-  width: 100%;
-  height: 258px;
-  flex: none;
+  gap: 32px;
   animation: none;
 }
-.nomi-setup-body.is-ready .nomi-onboarding-visual {
-  height: 284px;
-}
-.nomi-onboarding-copy {
+.nomi-onboarding-step {
+  min-height: 230px;
   width: 100%;
-  max-width: 650px;
-  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.nomi-onboarding-kicker {
-  margin: 0 0 12px;
-  color: var(--nomi-neutral-700) !important;
-  font-size: 10px !important;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+.nomi-onboarding-step-inner {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  animation: nomi-onb-in 0.4s ease both;
+}
+.nomi-onboarding-step-inner.is-tight { gap: 20px; }
+
+.nomi-onboarding-icon {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--nomi-cyan-100);
+  border-radius: 50%;
+  color: var(--nomi-cyan-700);
+}
+.nomi-onboarding-icon.is-small {
+  width: 56px;
+  height: 56px;
+}
+
+/* Step 0's welcome visual — chips fly in from off-screen, then orbit the
+   center mark continuously. Each chip is three nested layers: an outer
+   span that spins (its box covers the whole orbit area via inset:0, so it
+   rotates around the true center), a middle span placed at that chip's
+   fixed radius that counter-spins at the same speed to cancel the outer's
+   rotation (composition of equal-and-opposite rotations cancels the
+   chip's orientation while leaving its orbital position alone — same
+   technique clock hands use), and an inner span that plays the one-time
+   entrance. Every animated layer bakes its static positioning into the
+   keyframes themselves, same as .nomi-onboarding-found-card above —
+   animating `transform` replaces the whole property, so a centering
+   translate declared outside the animation would just be discarded. */
+.nomi-onboarding-orbit {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  margin: 0 auto;
+}
+.nomi-onboarding-orbit-spin {
+  position: absolute;
+  inset: 0;
+  animation-name: nomi-orb-spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.nomi-onboarding-orbit-counter {
+  position: absolute;
+  animation-name: nomi-orb-counter-spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.nomi-onboarding-orbit-fly {
+  display: block;
+  animation-name: nomi-onb-orbit-fly;
+  animation-duration: 1.2s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation-fill-mode: both;
+}
+.nomi-onboarding-orbit-chip {
+  display: block;
+  border-radius: 8px;
+  box-shadow: var(--nomi-shadow-sm);
+}
+.nomi-onboarding-orbit-chip.is-cyan { background: var(--nomi-cyan); }
+.nomi-onboarding-orbit-chip.is-magenta { background: var(--nomi-magenta); }
+.nomi-onboarding-orbit-chip.is-gold { background: #edbb00; }
+.nomi-onboarding-orbit-chip.is-neutral { background: var(--nomi-neutral-600); }
+.nomi-onboarding-orbit-chip.is-cyan-deep { background: var(--nomi-cyan-700); }
+.nomi-onboarding-orbit-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--nomi-ink);
+  color: var(--nomi-white);
+  opacity: 0;
+  animation:
+    nomi-onb-orbit-center-in 0.4s ease 2s both,
+    nomi-onb-orbit-pulse 2.4s ease-in-out 2.4s infinite;
+}
+.nomi-onboarding-copy.is-orbit-copy {
+  opacity: 0;
+  animation: nomi-onb-in 0.6s ease 2.4s both;
+}
+
+.nomi-onboarding-copy {
+  max-width: 460px;
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
 }
 .nomi-onboarding-copy h1 {
   margin: 0;
-  font: 600 42px/1.08 var(--nomi-font-heading);
-  letter-spacing: -0.035em;
-}
-.nomi-onboarding-copy > p:last-child {
-  max-width: 610px;
-  margin: 14px auto 0;
-  color: var(--nomi-neutral-700);
-  font-size: 16px;
-  line-height: 1.45;
-}
-.nomi-setup-body.is-ready .nomi-onboarding-copy {
-  margin-top: 6px;
-}
-.nomi-setup-body.is-ready .nomi-onboarding-kicker {
-  color: var(--nomi-cyan-700) !important;
-}
-.nomi-setup-status {
-  position: absolute;
-  right: 70px;
-  top: 305px;
-  color: var(--nomi-cyan-700);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-}
-.nomi-onboarding-primary {
-  min-height: 46px;
-  margin-top: 26px;
-  padding: 11px 28px;
-  gap: 30px;
-  background: var(--nomi-cyan-700);
-  border-radius: var(--nomi-radius-sm);
-  font-size: 14px;
-  animation: nomi-ready-item 360ms 2200ms ease-out both;
-}
-
-/* Screen 1 — store scan */
-.nomi-store-scan {
-  width: 500px;
-  height: 252px;
-}
-.nomi-browser-frame {
-  width: 500px;
-  height: 252px;
-  inset: 0;
-  border-radius: var(--nomi-radius-lg);
-  box-shadow: none;
-  transform: none;
-}
-.nomi-browser-bar {
-  height: 38px;
-  padding: 0 16px;
-  justify-content: flex-start;
-  gap: 16px;
-}
-.nomi-browser-bar > span {
-  display: flex;
-  gap: 7px;
-}
-.nomi-browser-bar i {
-  width: 8px;
-  height: 8px;
-}
-.nomi-browser-bar em {
-  overflow: hidden;
-  color: var(--nomi-neutral-700);
-  font-size: 11px;
-  font-style: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.nomi-browser-hero {
-  height: 64px;
-  margin: 20px 20px 18px;
-}
-.nomi-browser-products {
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  padding: 0 20px;
-}
-.nomi-browser-products img,
-.nomi-browser-products span {
-  height: 76px;
-}
-.nomi-browser-products span:nth-child(1) { background: #e9ddca; }
-.nomi-browser-products span:nth-child(2) { background: #dde6df; }
-.nomi-browser-products span:nth-child(3) { background: #e6dee8; }
-.nomi-browser-products span:nth-child(4) { background: #dce5e9; }
-.nomi-scan-line {
-  top: 38px;
-  animation: nomi-scan-wide var(--nomi-step-duration) ease-in-out infinite;
-}
-.nomi-found-note {
-  right: 16px;
-  bottom: 14px;
-  padding: 8px 11px;
-  color: var(--nomi-paper);
-  background: var(--nomi-ink);
-  border: 0;
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  animation-delay: 1100ms;
-}
-
-/* Screen 2 — trigger calendar */
-.nomi-trigger-calendar {
-  width: 625px;
-  height: 238px;
-  color: var(--nomi-neutral-700);
-}
-.nomi-trigger-days,
-.nomi-trigger-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-}
-.nomi-trigger-days {
-  height: 34px;
-  align-items: center;
-  background: var(--nomi-neutral-100);
-  border: 1px solid var(--nomi-neutral-300);
-}
-.nomi-trigger-days span {
-  align-self: stretch;
-  display: grid;
-  place-items: center;
-  border-right: 1px solid var(--nomi-neutral-300);
-  font-size: 9px;
-  letter-spacing: 0.14em;
-}
-.nomi-trigger-days span:last-child { border-right: 0; }
-.nomi-trigger-grid {
-  height: 152px;
-  border: 1px solid var(--nomi-neutral-300);
-  border-top: 0;
-}
-.nomi-trigger-grid > div {
-  padding: 16px 10px;
-  position: relative;
-  border-right: 1px solid var(--nomi-neutral-300);
-}
-.nomi-trigger-grid > div:last-child { border-right: 0; }
-.nomi-trigger-grid i {
-  width: 28px;
-  height: 20px;
-  display: block;
-  position: relative;
-  color: var(--nomi-cyan);
-  border: 2px solid currentColor;
-  border-radius: 2px;
-  opacity: 0;
-  animation: nomi-envelope-land 320ms ease-out forwards;
-}
-.nomi-trigger-grid i::after {
-  content: "";
-  width: 15px;
-  height: 15px;
-  position: absolute;
-  left: 4px;
-  top: -8px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg);
-}
-.nomi-trigger-grid .tone-0 { animation-delay: 300ms; }
-.nomi-trigger-grid .tone-1 { color: var(--nomi-cyan-700); animation-delay: 720ms; }
-.nomi-trigger-grid .tone-3 { color: var(--nomi-neutral-700); animation-delay: 1140ms; }
-.nomi-trigger-grid .tone-4 { color: #35a4c6; animation-delay: 1560ms; }
-.nomi-trigger-grid .tone-magenta {
-  color: var(--nomi-magenta);
-  margin-top: 22px;
-  animation-delay: 1980ms;
-}
-.nomi-trigger-grid i::before {
-  content: "";
-  width: 84px;
-  height: 5px;
-  position: absolute;
-  left: -10px;
-  top: -18px;
-  background: currentColor;
-}
-.nomi-trigger-calendar > p {
-  margin: 12px 0 0;
-  font-size: 13px;
-}
-
-/* Screen 3 — voice decision */
-.nomi-voice-sheet {
-  width: 550px;
-  color: var(--nomi-neutral-600);
-}
-.nomi-voice-sheet > p {
-  margin: 0 0 16px;
-  color: var(--nomi-neutral-700);
-  font-size: 9px;
-  letter-spacing: 0.2em;
-}
-.nomi-voice-sheet > div {
-  min-height: 62px;
-  box-sizing: border-box;
-  padding: 15px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border: 1px solid var(--nomi-neutral-200);
-  font: 400 20px/1.25 var(--nomi-font-heading);
-  animation: nomi-copy-enter 360ms ease-out both;
-}
-.nomi-voice-sheet > div:nth-of-type(2) { animation-delay: 380ms; }
-.nomi-voice-sheet > div:nth-of-type(3) { animation-delay: 760ms; }
-.nomi-voice-sheet > div + div { border-top: 0; }
-.nomi-voice-sheet > div.is-chosen {
-  position: relative;
+  font: 600 30px/1.2 var(--nomi-font-heading);
+  letter-spacing: -0.02em;
   color: var(--nomi-ink);
-  border: 2px solid var(--nomi-cyan);
 }
-.nomi-voice-sheet .is-chosen strong {
-  font-weight: 600;
-}
-.nomi-voice-sheet .is-chosen strong::after {
-  content: "";
-  width: 2px;
-  height: 23px;
-  margin-left: 5px;
-  display: inline-block;
-  vertical-align: -4px;
-  background: var(--nomi-cyan);
-  animation: nomi-cursor 700ms step-end infinite;
-}
-.nomi-voice-sheet .is-chosen span {
-  color: var(--nomi-cyan-700);
-  font: 700 9px var(--nomi-font-ui);
-  letter-spacing: 0.16em;
-}
-.nomi-voice-sheet footer {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
-  font-size: 11px;
-}
-.nomi-voice-sheet footer i {
-  height: 1px;
-  background: var(--nomi-neutral-200);
-}
-.nomi-voice-sheet footer strong {
-  color: var(--nomi-cyan-700);
-  font-size: 10px;
-  letter-spacing: 0.15em;
+.nomi-onboarding-copy p {
+  margin: 0;
+  font: 16px/1.5 var(--nomi-font-heading);
+  color: var(--nomi-neutral-700);
 }
 
-/* Screen 4 — proof sheet */
-.nomi-proof-sheet {
-  width: 575px;
+.nomi-onboarding-skip {
+  margin-top: 20px;
+  padding: 0;
+  color: var(--nomi-neutral-600);
+  background: transparent;
+  border: 0;
+  font: 14px var(--nomi-font-heading);
+  cursor: pointer;
 }
-.nomi-proof-sheet > p {
-  margin: 0 0 10px;
-  padding-bottom: 8px;
-  color: var(--nomi-neutral-700);
-  border-bottom: 1px solid var(--nomi-neutral-200);
-  font-size: 9px;
-  letter-spacing: 0.2em;
+.nomi-onboarding-skip:hover {
+  color: var(--nomi-ink);
 }
-.nomi-proof-sheet > div {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+
+/* Step: Look around — floating found-cards, fanned and rotated */
+.nomi-onboarding-found {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  height: 150px;
 }
-.nomi-proof-sheet article {
-  min-width: 0;
-  height: 146px;
+.nomi-onboarding-found-card {
+  width: 118px;
+  position: absolute;
+  left: 50%;
+  top: 0;
   box-sizing: border-box;
   padding: 10px;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--nomi-neutral-300);
-  animation: nomi-proof-pop 360ms calc(var(--proof-index) * 240ms) ease-out both;
-}
-.nomi-proof-sheet article > span {
-  margin-bottom: 8px;
-  color: var(--nomi-neutral-700);
-  font-size: 6px;
-  letter-spacing: 0.13em;
-}
-.nomi-proof-sheet article img,
-.nomi-proof-sheet article > i {
-  width: 100%;
-  height: 50px;
-  flex: none;
-  object-fit: cover;
-  background: #e9ddca;
-}
-.nomi-proof-sheet .proof-tone-1 { background: #dde6df; }
-.nomi-proof-sheet .proof-tone-2 { background: #e6dee8; }
-.nomi-proof-sheet .proof-tone-3 { background: #dce5e9; }
-.nomi-proof-sheet article b,
-.nomi-proof-sheet article em {
-  height: 4px;
-  margin-top: 8px;
-  background: var(--nomi-neutral-200);
-}
-.nomi-proof-sheet article b { width: 88%; }
-.nomi-proof-sheet article em { width: 62%; margin-top: 4px; }
-.nomi-proof-sheet article button {
-  width: 100%;
-  height: 12px;
-  margin-top: auto;
-  padding: 0;
-  background: var(--nomi-cyan);
-  border: 0;
-}
-.nomi-proof-sheet footer {
-  margin-top: 16px;
-  color: var(--nomi-neutral-700);
-  font-size: 12px;
-}
-
-/* Screen 5 — ready */
-.nomi-ready-list {
-  width: 550px;
-  padding: 0;
+  gap: 8px;
   background: var(--nomi-white);
   border: 1px solid var(--nomi-neutral-200);
+  border-radius: 8px;
+  box-shadow: var(--nomi-shadow-sm);
+  animation: nomi-onb-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
-.nomi-ready-list > div {
-  min-height: 55px;
-  padding: 0 24px;
-  grid-template-columns: 24px 1fr auto;
-  border-bottom-color: var(--nomi-neutral-200);
-  animation: nomi-ready-item 360ms calc(var(--ready-index) * 420ms) ease-out both;
+.nomi-onboarding-found-swatch {
+  height: 52px;
+  border-radius: 5px;
 }
-.nomi-ready-check {
-  width: 20px;
-  height: 20px;
-  background: #168257;
-  font-size: 11px;
+.nomi-onboarding-found-swatch.is-cyan { background: var(--nomi-cyan-100); }
+.nomi-onboarding-found-swatch.is-magenta { background: color-mix(in srgb, var(--nomi-magenta) 10%, var(--nomi-white)); }
+.nomi-onboarding-found-swatch.is-gold { background: #f2e6c9; }
+.nomi-onboarding-found-swatch.is-neutral { background: var(--nomi-neutral-100); }
+.nomi-onboarding-found-tag {
+  align-self: center;
+  padding: 3px 9px;
+  font: 600 10px var(--nomi-font-ui);
+  letter-spacing: 0.02em;
+  border-radius: 999px;
 }
-.nomi-ready-list strong {
-  font-size: 14px;
-}
-.nomi-ready-list small {
-  color: #168257;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
+.nomi-onboarding-found-tag.is-cyan { background: var(--nomi-cyan-100); color: var(--nomi-cyan-700); }
+.nomi-onboarding-found-tag.is-magenta { background: color-mix(in srgb, var(--nomi-magenta) 10%, var(--nomi-white)); color: var(--nomi-magenta); }
+.nomi-onboarding-found-tag.is-gold { background: #fbf3da; color: var(--nomi-neutral-800); }
+.nomi-onboarding-found-tag.is-neutral { background: var(--nomi-neutral-100); color: var(--nomi-neutral-700); }
 
-/* Screen 1 — confirm the connected shop. A read-only field, not a real
-   URL entry: this is an embedded Shopify admin app, so the shop is
-   already known and authenticated before onboarding starts. */
-.nomi-onboarding-confirm {
-  margin-top: 22px;
+/* Step: Good timing — six-day grid, envelopes land as they're revealed */
+.nomi-onboarding-days {
+  width: 100%;
+  max-width: 500px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.nomi-onboarding-day {
   display: flex;
-  gap: 10px;
-  animation: nomi-ready-item 360ms 200ms ease-out both;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
-.nomi-onboarding-confirm-input {
-  min-width: 260px;
-  padding: 0 14px;
-  font: 14px var(--nomi-font-ui);
-  color: var(--nomi-neutral-700);
-  background: var(--nomi-neutral-100);
-  border: 1px solid var(--nomi-neutral-300);
-  border-radius: var(--nomi-radius-md);
+.nomi-onboarding-day > span {
+  color: var(--nomi-neutral-600);
+  font: 10px var(--nomi-font-ui);
 }
-.nomi-onboarding-confirm .nomi-onboarding-primary {
-  margin-top: 0;
-  animation: none;
+.nomi-onboarding-day-items {
+  width: 100%;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
 }
+.nomi-onboarding-day-mail {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  animation: nomi-onb-envelope 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.nomi-onboarding-day-mail.is-cyan { background: var(--nomi-cyan-100); color: var(--nomi-cyan-700); }
+.nomi-onboarding-day-mail.is-magenta { background: color-mix(in srgb, var(--nomi-magenta) 10%, var(--nomi-white)); color: var(--nomi-magenta); }
+.nomi-onboarding-day-mail.is-neutral { background: var(--nomi-neutral-100); color: var(--nomi-neutral-700); }
 
-/* Screen 4 — pick a tone. Three selectable cards standing in for the old
-   step's static "voice" mockup; picking one persists immediately (see
-   onPickTone in app._index.tsx) and advances the flow. */
-.nomi-tone-picker {
-  width: 500px;
+/* Step: Your tone — three selectable cards; picking one persists via
+   onPickTone in app._index.tsx and advances the flow. */
+.nomi-onboarding-tones {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
+  max-width: 520px;
 }
-.nomi-tone-option {
-  min-height: 68px;
-  padding: 14px 18px;
+.nomi-onboarding-tone {
   display: flex;
   align-items: center;
   gap: 14px;
-  text-align: left;
-  color: inherit;
+  padding: 14px 18px;
   background: var(--nomi-white);
-  border: 1.5px solid var(--nomi-neutral-200);
-  border-radius: var(--nomi-radius-md);
+  border: 2px solid var(--nomi-neutral-200);
+  border-radius: 12px;
   cursor: pointer;
-  animation: nomi-proof-pop 320ms ease-out both;
+  text-align: left;
+  font: inherit;
+  color: inherit;
 }
-.nomi-tone-option:nth-child(2) { animation-delay: 90ms; }
-.nomi-tone-option:nth-child(3) { animation-delay: 180ms; }
-.nomi-tone-option:hover {
-  border-color: var(--nomi-cyan-300);
-}
-.nomi-tone-option.is-chosen {
+.nomi-onboarding-tone.is-chosen {
   border-color: var(--nomi-cyan);
   background: var(--nomi-cyan-100);
 }
-.nomi-tone-dot {
-  width: 30px;
-  height: 30px;
+.nomi-onboarding-tone-dot {
+  width: 36px;
+  height: 36px;
   flex: none;
   border-radius: 50%;
-  background: var(--nomi-neutral-200);
+  background: var(--nomi-neutral-100);
 }
-.nomi-tone-option.is-chosen .nomi-tone-dot {
-  background: var(--nomi-cyan-300);
-}
-.nomi-tone-copy {
+.nomi-onboarding-tone-dot.is-cyan { background: var(--nomi-cyan-100); }
+.nomi-onboarding-tone-dot.is-magenta { background: color-mix(in srgb, var(--nomi-magenta) 14%, var(--nomi-white)); }
+.nomi-onboarding-tone-copy {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
-.nomi-tone-copy strong {
-  font: 600 14px var(--nomi-font-ui);
+.nomi-onboarding-tone-copy strong {
+  font: 600 15px var(--nomi-font-ui);
   color: var(--nomi-ink);
 }
-.nomi-tone-copy em {
-  font: italic 14px/1.3 var(--nomi-font-heading);
+.nomi-onboarding-tone-copy em {
+  font: italic 15px/1.3 var(--nomi-font-heading);
   color: var(--nomi-neutral-700);
 }
-.nomi-tone-check {
-  width: 22px;
-  height: 22px;
+.nomi-onboarding-tone-check {
+  width: 20px;
+  height: 20px;
   flex: none;
-  display: grid;
-  place-items: center;
-  color: var(--nomi-white);
-  background: var(--nomi-cyan);
-  border-radius: 50%;
-  font-size: 11px;
-  animation: nomi-envelope-land 220ms ease-out both;
+  color: var(--nomi-cyan);
+  animation: nomi-onb-check 0.3s ease both;
 }
 
-/* Screen 5a — writing, shown before the ready checklist replaces it. */
-.nomi-writing-emails {
-  width: 420px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  padding: 40px 0;
-}
-.nomi-writing-mark {
-  display: flex;
-  gap: 6px;
-}
-.nomi-writing-mark i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--nomi-cyan);
-  animation: nomi-writing-bounce 900ms ease-in-out infinite;
-}
-.nomi-writing-mark i:nth-child(2) { animation-delay: 120ms; }
-.nomi-writing-mark i:nth-child(3) { animation-delay: 240ms; }
-.nomi-writing-bar {
+/* Step: All set — a short writing pause, then the checklist */
+.nomi-onboarding-progress-track {
   width: 100%;
-  height: 5px;
+  height: 6px;
   background: var(--nomi-neutral-200);
   border-radius: 3px;
   overflow: hidden;
 }
-.nomi-writing-bar b {
+.nomi-onboarding-progress-fill {
   display: block;
   height: 100%;
+  width: 0;
   background: var(--nomi-cyan);
   border-radius: 3px;
-  animation: nomi-writing-fill 2.1s ease-out forwards;
+  animation: nomi-onb-fill 2.2s ease-out forwards;
+}
+.nomi-onboarding-checklist {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nomi-onboarding-check-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: transparent;
+}
+.nomi-onboarding-check-row.is-on {
+  background: var(--nomi-neutral-100);
+}
+.nomi-onboarding-check-mark-slot {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nomi-onboarding-check-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: nomi-onb-check 0.3s ease both;
+}
+.nomi-onboarding-check-mark.is-cyan { color: var(--nomi-cyan); }
+.nomi-onboarding-check-mark.is-magenta { color: var(--nomi-magenta); }
+.nomi-onboarding-check-empty {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--nomi-neutral-300);
+  border-radius: 50%;
+}
+.nomi-onboarding-check-row strong {
+  flex: 1;
+  font: 600 14px var(--nomi-font-ui);
+  color: var(--nomi-ink);
 }
 
-@keyframes nomi-writing-bounce {
-  0%, 100% { transform: translateY(0); opacity: 0.5; }
-  50% { transform: translateY(-6px); opacity: 1; }
+@keyframes nomi-onb-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-@keyframes nomi-writing-fill {
+@keyframes nomi-onb-pop {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.5) rotate(var(--nomi-onb-rot, 0deg)); }
+  65% { transform: translateX(-50%) scale(1.08) rotate(var(--nomi-onb-rot, 0deg)); }
+  100% { opacity: 1; transform: translateX(-50%) scale(1) rotate(var(--nomi-onb-rot, 0deg)); }
+}
+@keyframes nomi-onb-envelope {
+  0% { opacity: 0; transform: scale(0.5); }
+  65% { transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes nomi-onb-check {
+  0% { opacity: 0; transform: scale(0.4); }
+  60% { transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes nomi-onb-fill {
   from { width: 0%; }
   to { width: 100%; }
 }
+@keyframes nomi-orb-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes nomi-orb-counter-spin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+@keyframes nomi-onb-orbit-fly {
+  0% { opacity: 0; transform: translate(var(--nomi-orb-fx), var(--nomi-orb-fy)) scale(0.3); }
+  100% { opacity: 1; transform: translate(0, 0) scale(1); }
+}
+@keyframes nomi-onb-orbit-center-in {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes nomi-onb-orbit-pulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.06); }
+}
 
-@keyframes nomi-tab-progress {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
-}
-@keyframes nomi-scan-wide {
-  0%, 100% { transform: translateY(4px); opacity: 0.35; }
-  50% { transform: translateY(178px); opacity: 1; }
-}
-@keyframes nomi-envelope-land {
-  from { opacity: 0; transform: translateY(-12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes nomi-proof-pop {
-  from { opacity: 0; transform: translateY(8px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@media (max-width: 760px) {
-  .nomi-onboarding {
-    padding: 20px 12px;
-  }
-  .nomi-onboarding-card,
-  .nomi-onboarding-card.is-ready {
-    width: 100%;
-    min-height: 610px;
-  }
-  .nomi-setup-header {
-    padding: 0 16px;
-  }
-  .nomi-setup-header small {
-    display: none;
-  }
+@media (max-width: 560px) {
+  .nomi-setup-header,
   .nomi-setup-tabs {
-    padding-inline: 14px;
-    gap: 5px;
+    padding-inline: 16px;
   }
   .nomi-setup-tabs span {
     font-size: 8px;
-    letter-spacing: 0.08em;
   }
-  .nomi-setup-body,
-  .nomi-setup-body.is-ready {
-    min-height: 490px;
-    padding: 28px 18px 30px;
-  }
-  .nomi-onboarding-visual {
-    height: 230px;
-    transform: scale(0.84);
-  }
-  .nomi-setup-body.is-ready .nomi-onboarding-visual {
-    height: 262px;
-  }
-  .nomi-onboarding-copy {
-    margin-top: 8px;
+  .nomi-setup-body {
+    padding: 32px 20px 30px;
   }
   .nomi-onboarding-copy h1 {
-    font-size: 32px;
+    font-size: 25px;
   }
-  .nomi-onboarding-copy > p:last-child {
-    font-size: 14px;
-  }
-  .nomi-setup-status {
-    right: 24px;
-    top: 278px;
+  .nomi-onboarding-found,
+  .nomi-onboarding-days {
+    max-width: 100%;
   }
 }
 
@@ -3105,4 +2473,614 @@
     animation-delay: 0ms !important;
     transition-duration: 1ms !important;
   }
+}
+
+/* — campaigns page — */
+.nomi-campaigns-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.nomi-campaigns-create svg {
+  display: block;
+}
+
+/* the one deliberate magenta accent on this page, same role as the
+   duplicate-mail warning strip: an upsell/gate notice, not a second UI color */
+.nomi-campaigns-upsell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nomi-space-2);
+  margin: var(--nomi-space-4) 0;
+  padding: var(--nomi-space-4);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--nomi-magenta) 9%, var(--nomi-white)),
+    var(--nomi-white) 65%
+  );
+  border: 1px solid color-mix(in srgb, var(--nomi-magenta) 32%, var(--nomi-white));
+  border-radius: var(--nomi-radius-md);
+}
+.nomi-campaigns-upsell-title {
+  display: flex;
+  align-items: center;
+  gap: var(--nomi-space-2);
+}
+.nomi-campaigns-upsell-title > span {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--nomi-white);
+  background: var(--nomi-magenta);
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 800;
+}
+.nomi-campaigns-upsell-title strong {
+  font: 600 14px var(--nomi-font-ui);
+}
+.nomi-campaigns-upsell-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nomi-space-4);
+}
+.nomi-campaigns-upsell-body p {
+  margin: 0;
+  color: var(--nomi-neutral-700);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.nomi-campaigns-upgrade {
+  flex: none;
+  min-height: 38px;
+  padding: 10px 18px;
+  color: var(--nomi-white);
+  background: var(--nomi-ink);
+  border: 1px solid var(--nomi-ink);
+  border-radius: var(--nomi-radius-md);
+  font: 600 13px var(--nomi-font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nomi-campaigns-upgrade:hover {
+  background: var(--nomi-neutral-800);
+  border-color: var(--nomi-neutral-800);
+}
+
+.nomi-campaigns-card {
+  background: var(--nomi-white);
+  border-radius: var(--nomi-radius-md);
+  box-shadow: var(--nomi-shadow-sm);
+  overflow: hidden;
+}
+.nomi-campaigns-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nomi-space-3);
+  padding: var(--nomi-space-3) var(--nomi-space-4);
+}
+.nomi-campaigns-card-head > span {
+  font: 600 16px var(--nomi-font-ui);
+}
+.nomi-campaigns-card-actions {
+  display: flex;
+  gap: var(--nomi-space-2);
+}
+.nomi-campaigns-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--nomi-neutral-700);
+  background: transparent;
+  border: 1px solid var(--nomi-neutral-300);
+  border-radius: var(--nomi-radius-md);
+  cursor: pointer;
+}
+.nomi-campaigns-icon-btn:hover {
+  color: var(--nomi-ink);
+  border-color: color-mix(in srgb, var(--nomi-ink) 45%, transparent);
+}
+
+.nomi-campaigns-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+}
+.nomi-campaigns-table th {
+  padding: 11px var(--nomi-space-4);
+  background: var(--nomi-neutral-100);
+  color: var(--nomi-neutral-600);
+  font: 500 10px var(--nomi-font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+}
+.nomi-campaigns-table td {
+  padding: 15px var(--nomi-space-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-top: 1px solid var(--nomi-neutral-200);
+  vertical-align: middle;
+}
+.nomi-campaigns-table tbody tr:hover {
+  background: color-mix(in srgb, var(--nomi-ink) 3%, transparent);
+}
+.nomi-campaigns-name {
+  padding: 0;
+  color: var(--nomi-cyan-700);
+  background: none;
+  border: 0;
+  font: 500 13px var(--nomi-font-ui);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.nomi-campaigns-name:hover {
+  text-decoration: underline;
+}
+.nomi-campaigns-muted {
+  color: var(--nomi-neutral-600);
+}
+.nomi-campaigns-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 5px 10px;
+  color: var(--nomi-cyan-700);
+  background: var(--nomi-cyan-100);
+  border-radius: 11px;
+  font: 500 11px var(--nomi-font-ui);
+}
+
+.nomi-campaigns-pagination {
+  display: flex;
+  justify-content: center;
+  gap: var(--nomi-space-2);
+  padding: var(--nomi-space-3);
+}
+.nomi-campaigns-page-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--nomi-neutral-300);
+  background: var(--nomi-neutral-100);
+  border: 0;
+  border-radius: var(--nomi-radius-md);
+  cursor: not-allowed;
+}
+
+/* — brand & settings page — */
+.nomi-brand-layout {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  gap: var(--nomi-space-8);
+  align-items: start;
+  margin-top: var(--nomi-space-2);
+}
+
+.nomi-brand-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.nomi-brand-rail-kicker {
+  font: 500 10px var(--nomi-font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nomi-neutral-600);
+  padding-bottom: var(--nomi-space-2);
+}
+.nomi-brand-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 6px;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--nomi-neutral-200);
+  border-radius: var(--nomi-radius-sm);
+  color: var(--nomi-neutral-700);
+  font: 400 14px var(--nomi-font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, padding-left 0.15s ease;
+}
+.nomi-brand-rail-item-hover {
+  padding-left: 12px;
+  background: var(--nomi-cyan-100);
+  border-color: var(--nomi-cyan-300);
+  color: var(--nomi-ink);
+}
+.nomi-brand-rail-item-active {
+  color: var(--nomi-cyan-700);
+  font-weight: 600;
+  border-color: var(--nomi-cyan-700);
+}
+.nomi-brand-rail-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+.nomi-brand-rail-label {
+  flex: 1;
+}
+.nomi-brand-rail-num {
+  font: 400 11px var(--nomi-font-ui);
+  color: var(--nomi-neutral-600);
+}
+.nomi-brand-rail-arrow {
+  font: 600 13px var(--nomi-font-ui);
+  color: var(--nomi-cyan-700);
+}
+
+.nomi-brand-panel {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+.nomi-brand-profile {
+  display: flex;
+  gap: var(--nomi-space-4);
+  padding-bottom: var(--nomi-space-6);
+  border-bottom: 1px solid var(--nomi-neutral-300);
+}
+.nomi-brand-initial {
+  font: 600 62px/0.75 var(--nomi-font-heading);
+  color: var(--nomi-ink);
+}
+.nomi-brand-profile-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nomi-space-3);
+  padding-top: 6px;
+}
+.nomi-brand-profile-body p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--nomi-neutral-700);
+}
+.nomi-brand-profile-body strong {
+  color: var(--nomi-ink);
+}
+
+.nomi-brand-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px var(--nomi-space-6);
+}
+.nomi-brand-field-grid-1 {
+  grid-template-columns: 1fr;
+  margin-top: 2px;
+}
+.nomi-brand-field {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--nomi-space-2);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--nomi-neutral-200);
+  font-size: 13.5px;
+}
+.nomi-brand-field > span:first-child {
+  font-size: 12px;
+  color: var(--nomi-neutral-600);
+}
+.nomi-brand-field-empty {
+  color: var(--nomi-neutral-300);
+}
+
+.nomi-brand-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nomi-space-3);
+  padding: 6px 0 var(--nomi-space-6);
+  border-bottom: 1px solid var(--nomi-neutral-300);
+}
+.nomi-brand-section h2 {
+  margin: 0;
+  font-size: 24px;
+}
+.nomi-brand-section > p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--nomi-neutral-700);
+  max-width: 560px;
+}
+.nomi-brand-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nomi-brand-subsection .nomi-brand-rail-kicker {
+  padding-bottom: 0;
+}
+.nomi-brand-subsection .nomi-brand-field-grid {
+  margin-top: var(--nomi-space-2);
+}
+
+.nomi-brand-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nomi-space-4);
+  margin-top: 4px;
+}
+.nomi-brand-row-label {
+  flex: 1;
+  font: 600 15px var(--nomi-font-ui);
+}
+.nomi-brand-row-label em {
+  font: 400 13px var(--nomi-font-ui);
+  font-style: normal;
+  color: var(--nomi-neutral-600);
+}
+.nomi-brand-search {
+  flex: 1;
+  font-size: 14px;
+  color: var(--nomi-neutral-600);
+  border-bottom: 1px solid var(--nomi-neutral-300);
+  padding-bottom: 6px;
+  max-width: 280px;
+}
+
+.nomi-brand-link {
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: 600 13px var(--nomi-font-ui);
+  color: var(--nomi-neutral-700);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: text-underline-offset 0.15s ease, color 0.15s ease;
+}
+.nomi-brand-link:hover {
+  text-underline-offset: 6px;
+  color: var(--nomi-ink);
+}
+.nomi-brand-link-accent {
+  color: var(--nomi-cyan-700);
+}
+.nomi-brand-link-accent:hover {
+  color: var(--nomi-cyan-800);
+}
+
+.nomi-brand-legal {
+  font: italic 400 12.5px/1.6 var(--nomi-font-heading);
+  color: var(--nomi-neutral-600);
+  max-width: 560px;
+  margin: var(--nomi-space-2) 0 0;
+}
+
+.nomi-brand-plan {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nomi-space-4);
+  padding: var(--nomi-space-3) 0;
+  border-top: 2px solid var(--nomi-ink);
+  border-bottom: 1px solid var(--nomi-neutral-300);
+}
+.nomi-brand-plan-name {
+  flex: 1;
+  font: 600 24px var(--nomi-font-heading);
+}
+
+.nomi-brand-empty {
+  font: italic 400 14px var(--nomi-font-heading);
+  color: var(--nomi-neutral-600);
+  margin: 4px 0 0;
+}
+
+/* — contacts page — */
+/* Masthead stat row. Nomi's own UI keeps to ink/cyan (interaction) with
+   magenta as a single spot accent — see CLAUDE.md's brand section and
+   DECISIONS.md, 2026-08-17 — so "active" doesn't get a status green the
+   way a generic dashboard might; it stays full ink, and only the
+   headline "total" figure takes the one interaction color. */
+.nomi-contacts-stats {
+  display: flex;
+  gap: var(--nomi-space-8);
+  padding: var(--nomi-space-2) 0 var(--nomi-space-6);
+  margin-bottom: var(--nomi-space-4);
+  border-bottom: 1px solid var(--nomi-neutral-300);
+}
+.nomi-contacts-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nomi-contacts-stat-label {
+  font: 500 10px var(--nomi-font-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nomi-neutral-600);
+}
+.nomi-contacts-stat-value {
+  font: 600 44px/1 var(--nomi-font-heading);
+  color: var(--nomi-ink);
+}
+.nomi-contacts-stat-value--accent {
+  color: var(--nomi-cyan);
+}
+.nomi-contacts-stat-value--muted {
+  color: var(--nomi-neutral-400);
+}
+
+.nomi-contacts-toolbar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nomi-space-4);
+  margin: 0 0 var(--nomi-space-4);
+}
+.nomi-contacts-search {
+  flex: 1;
+  max-width: 340px;
+  min-width: 0;
+  padding: 0 0 6px;
+  font-family: var(--nomi-font-ui);
+  font-size: 14px;
+  color: var(--nomi-ink);
+  caret-color: var(--nomi-cyan);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--nomi-neutral-300);
+  border-radius: 0;
+  appearance: none;
+}
+.nomi-contacts-search::placeholder {
+  color: var(--nomi-neutral-600);
+  opacity: 1;
+}
+.nomi-contacts-search:hover {
+  border-bottom-color: var(--nomi-neutral-600);
+}
+.nomi-contacts-search:focus-visible {
+  border-bottom-color: var(--nomi-cyan);
+  outline: none;
+}
+.nomi-contacts-search::-webkit-search-cancel-button {
+  display: none;
+}
+.nomi-contacts-manage {
+  flex: none;
+}
+.nomi-brand-link.nomi-contacts-manage:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.nomi-brand-link.nomi-contacts-manage:disabled:hover {
+  text-underline-offset: 3px;
+  color: var(--nomi-neutral-700);
+}
+
+.nomi-contacts-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+}
+.nomi-contacts-table th {
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--nomi-neutral-300);
+  color: var(--nomi-neutral-600);
+  font: 500 10px var(--nomi-font-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: left;
+}
+.nomi-contacts-table th:last-child {
+  text-align: right;
+}
+.nomi-contacts-table td {
+  padding: 13px 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--nomi-neutral-200);
+  vertical-align: middle;
+}
+.nomi-contacts-table tbody tr:hover {
+  background: color-mix(in srgb, var(--nomi-ink) 3%, transparent);
+}
+.nomi-contacts-name {
+  font: 600 14px var(--nomi-font-heading);
+  color: var(--nomi-ink);
+}
+.nomi-contacts-email {
+  font-family: var(--nomi-font-ui);
+  color: var(--nomi-neutral-700);
+}
+.nomi-contacts-date {
+  color: var(--nomi-neutral-500);
+  text-align: right;
+}
+.nomi-contacts-muted {
+  color: var(--nomi-neutral-500);
+  font-style: italic;
+}
+.nomi-contacts-empty {
+  padding: 34px 4px;
+  color: var(--nomi-neutral-600);
+  font: italic 400 14px var(--nomi-font-heading);
+  text-align: center;
+  white-space: normal;
+}
+
+.nomi-contacts-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--nomi-space-3);
+  padding: var(--nomi-space-4) var(--nomi-space-3) 0;
+}
+.nomi-contacts-page-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--nomi-neutral-700);
+  background: var(--nomi-neutral-100);
+  border: 0;
+  border-radius: var(--nomi-radius-md);
+  text-decoration: none;
+}
+.nomi-contacts-page-btn:hover {
+  background: var(--nomi-cyan-100);
+  color: var(--nomi-cyan-700);
+}
+.nomi-contacts-page-btn:disabled {
+  color: var(--nomi-neutral-300);
+  cursor: not-allowed;
+}
+.nomi-contacts-page-count {
+  font: 500 12px var(--nomi-font-ui);
+  color: var(--nomi-neutral-700);
+  white-space: nowrap;
+}
+
+/* — custom cursors — */
+/* Three pointer treatments, swapped in per element type (design canvas
+   directions, round 2): the manicule (a pointing hand) over hoverable
+   rows/links, the nib (a pen point) over free-text editable fields, and
+   the loupe (a magnifying glass) over search/filter fields. Data-URI SVGs
+   so no extra asset request; the trailing two numbers on each `cursor`
+   value are the hotspot — the tip of the hand / nib / glass, in the
+   cursor image's own coordinate space — and the fallback keyword after
+   the comma is what renders if a browser rejects the custom image.
+   `.nomi-cursor-nib` has no host on the Contacts page (nothing there is a
+   free-text field — the search box is a filter, which takes the loupe
+   instead) but is defined here for the next page that has one. */
+.nomi-cursor-manicule {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M11 17 L11 9.5 Q11 7.5 13 7.5 Q15 7.5 15 9.5 L15 14' fill='none' stroke='rgb(32,30,29)' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M15 14 L15 10.5 Q15 8.8 16.8 8.8 Q18.5 8.8 18.5 10.5 L18.5 15' fill='none' stroke='rgb(32,30,29)' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M18.5 15 L18.5 11.5 Q18.5 10 20 10 Q21.5 10 21.5 11.5 L21.5 17' fill='none' stroke='rgb(32,30,29)' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M7 17.5 Q7 15.5 9 15 L11 14.5 L11 22 Q11 24.5 14 24.5 L19 24.5 Q22.5 24.5 22.5 20.5 L22.5 17' fill='none' stroke='rgb(32,30,29)' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 8 8, pointer;
+}
+.nomi-cursor-nib {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M20 4 L8 24 L11 24 L23 7 Z' fill='none' stroke='rgb(0,136,176)' stroke-width='1.6' stroke-linejoin='round'/%3E%3Cline x1='14' y1='16' x2='11.5' y2='20.3' stroke='rgb(0,136,176)' stroke-width='1.6'/%3E%3Ccircle cx='19' cy='8' r='1.3' fill='rgb(0,136,176)'/%3E%3C/svg%3E") 8 24, text;
+}
+.nomi-cursor-loupe {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='12' cy='12' r='7' fill='none' stroke='rgb(214,0,108)' stroke-width='1.8'/%3E%3Cline x1='17.5' y1='17.5' x2='24' y2='24' stroke='rgb(214,0,108)' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") 12 12, pointer;
 }

@@ -1,5 +1,3 @@
-import React from 'react';
-
 export function Input({ label, hint, id, ...rest }) {
   return (
     <label htmlFor={id} style={{ display: 'flex', flexDirection: 'column', gap: 6, fontFamily: 'var(--font-ui)' }}>
