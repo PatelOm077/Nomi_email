@@ -18,9 +18,9 @@ import { generateRefundConfirmationEmail } from "../email-engine/generate-refund
 import { generateNewsletterEmail } from "../email-engine/generate-newsletter-email";
 import { generateLifecycleEmail } from "../email-engine/generate-lifecycle-email";
 import { EMAIL_GENERATION_PAUSED } from "../email-engine/generation-status";
-import { renderLifecycleTemplateHtml } from "../email-engine/templates/lifecycle-template";
-import { LIFECYCLE_TEMPLATE_COPY } from "../email-engine/templates/lifecycle-template-copy";
-import type { LifecycleTemplateCustomization } from "../email-engine/templates/types";
+import { loadDashboardData } from "../dashboard/dashboard-data.server";
+import { buildLifecycleInputs } from "../dashboard/lifecycle-inputs";
+import { LIFECYCLE_FLOWS, buildLifecycleSlots } from "../dashboard/lifecycle-flow-catalog";
 import type {
   AbandonedCartRecovery,
   EmailLanguage,
@@ -35,325 +35,6 @@ import type {
 } from "../email-engine/types";
 import { EMAIL_LANGUAGES, EMAIL_TONES } from "../email-engine/types";
 
-// One round trip: shop identity, the active theme's name (the closest thing
-// to a "brand asset" the Admin API exposes — there's no logo/colors field,
-// see explanation below), a handful of products, and the most recent order.
-const DASHBOARD_QUERY = `#graphql
-  query DashboardData {
-    shop {
-      name
-    }
-    themes(first: 1, roles: [MAIN]) {
-      nodes {
-        name
-      }
-    }
-    products(first: 4, sortKey: UPDATED_AT, reverse: true) {
-      edges {
-        node {
-          id
-          title
-          onlineStoreUrl
-          featuredMedia {
-            preview {
-              image {
-                url
-                altText
-              }
-            }
-          }
-          priceRangeV2 {
-            minVariantPrice {
-              amount
-              currencyCode
-            }
-          }
-        }
-      }
-    }
-    orders(first: 1, sortKey: CREATED_AT, reverse: true) {
-      edges {
-        node {
-          name
-          customer {
-            firstName
-          }
-          currentTotalPriceSet {
-            shopMoney {
-              amount
-              currencyCode
-            }
-          }
-          lineItems(first: 5) {
-            edges {
-              node {
-                title
-                quantity
-                image {
-                  url
-                  altText
-                }
-                originalTotalSet {
-                  shopMoney {
-                    amount
-                    currencyCode
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    shippedOrders: orders(
-      first: 1
-      sortKey: CREATED_AT
-      reverse: true
-      query: "fulfillment_status:fulfilled"
-    ) {
-      edges {
-        node {
-          name
-          customer {
-            firstName
-          }
-          lineItems(first: 5) {
-            edges {
-              node {
-                title
-                quantity
-                image {
-                  url
-                  altText
-                }
-                product {
-                  onlineStoreUrl
-                }
-              }
-            }
-          }
-          fulfillments(first: 1) {
-            displayStatus
-            estimatedDeliveryAt
-            trackingInfo {
-              number
-              url
-              company
-            }
-          }
-        }
-      }
-    }
-    abandonedCheckouts(first: 1, sortKey: CREATED_AT, reverse: true) {
-      edges {
-        node {
-          abandonedCheckoutUrl
-          customer {
-            firstName
-          }
-          totalPriceSet {
-            shopMoney {
-              amount
-              currencyCode
-            }
-          }
-          lineItems(first: 5) {
-            edges {
-              node {
-                title
-                quantity
-                image {
-                  url
-                  altText
-                }
-                originalTotalPriceSet {
-                  shopMoney {
-                    amount
-                    currencyCode
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    refundedOrders: orders(
-      first: 10
-      sortKey: UPDATED_AT
-      reverse: true
-      query: "financial_status:refunded OR financial_status:partially_refunded"
-    ) {
-      edges {
-        node {
-          name
-          customer {
-            firstName
-          }
-          refunds {
-            note
-            totalRefundedSet {
-              shopMoney {
-                amount
-                currencyCode
-              }
-            }
-            refundLineItems(first: 5) {
-              edges {
-                node {
-                  quantity
-                  subtotalSet {
-                    shopMoney {
-                      amount
-                      currencyCode
-                    }
-                  }
-                  lineItem {
-                    title
-                    image {
-                      url
-                      altText
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
-type DashboardQueryResponse = {
-  data: {
-    shop: { name: string };
-    themes: { nodes: { name: string }[] };
-    products: {
-      edges: {
-        node: {
-          id: string;
-          title: string;
-          onlineStoreUrl: string | null;
-          featuredMedia: { preview: { image: { url: string; altText: string | null } | null } | null } | null;
-          priceRangeV2: { minVariantPrice: { amount: string; currencyCode: string } };
-        };
-      }[];
-    };
-    orders: {
-      edges: {
-        node: {
-          name: string;
-          customer: { firstName: string | null } | null;
-          currentTotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
-          lineItems: {
-            edges: {
-              node: {
-                title: string;
-                quantity: number;
-                image: { url: string; altText: string | null } | null;
-                originalTotalSet: { shopMoney: { amount: string; currencyCode: string } };
-              };
-            }[];
-          };
-        };
-      }[];
-    };
-    shippedOrders: {
-      edges: {
-        node: {
-          name: string;
-          customer: { firstName: string | null } | null;
-          lineItems: {
-            edges: {
-              node: {
-                title: string;
-                quantity: number;
-                image: { url: string; altText: string | null } | null;
-                product: { onlineStoreUrl: string | null } | null;
-              };
-            }[];
-          };
-          fulfillments: {
-            displayStatus: string;
-            estimatedDeliveryAt: string | null;
-            trackingInfo: { number: string | null; url: string | null; company: string | null }[];
-          }[];
-        };
-      }[];
-    };
-    abandonedCheckouts: {
-      edges: {
-        node: {
-          abandonedCheckoutUrl: string;
-          customer: { firstName: string | null } | null;
-          totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
-          lineItems: {
-            edges: {
-              node: {
-                title: string | null;
-                quantity: number;
-                image: { url: string; altText: string | null } | null;
-                originalTotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
-              };
-            }[];
-          };
-        };
-      }[];
-    };
-    refundedOrders: {
-      edges: {
-        node: {
-          name: string;
-          customer: { firstName: string | null } | null;
-          refunds: {
-            note: string | null;
-            totalRefundedSet: {
-              shopMoney: { amount: string; currencyCode: string };
-            };
-            refundLineItems: {
-              edges: {
-                node: {
-                  quantity: number;
-                  subtotalSet: {
-                    shopMoney: { amount: string; currencyCode: string };
-                  };
-                  lineItem: {
-                    title: string;
-                    image: { url: string; altText: string | null } | null;
-                  };
-                };
-              }[];
-            };
-          }[];
-        };
-      }[];
-    };
-  };
-};
-
-function formatMoney(amount: string, currencyCode: string) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currencyCode,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(Number(amount));
-}
-
-// "IN_TRANSIT" -> "in transit". Covers every FulfillmentDisplayStatus
-// value without a lookup table — they're all SCREAMING_SNAKE_CASE words.
-function formatFulfillmentStatus(status: string): string {
-  return status.toLowerCase().replace(/_/g, " ");
-}
-
-function formatDeliveryDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-  }).format(new Date(iso));
-}
-
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
@@ -367,135 +48,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     update: {},
   });
 
-  const response = await admin.graphql(DASHBOARD_QUERY);
-  const { data } = (await response.json()) as DashboardQueryResponse;
-
-  const products = data.products.edges.map(({ node }) => ({
-    id: node.id,
-    title: node.title,
-    productUrl: node.onlineStoreUrl,
-    imageUrl: node.featuredMedia?.preview?.image?.url ?? null,
-    imageAlt: node.featuredMedia?.preview?.image?.altText ?? node.title,
-    price: formatMoney(
-      node.priceRangeV2.minVariantPrice.amount,
-      node.priceRangeV2.minVariantPrice.currencyCode,
-    ),
-  }));
-
-  const orderNode = data.orders.edges[0]?.node ?? null;
-  const order = orderNode
-    ? {
-        name: orderNode.name,
-        customerFirstName: orderNode.customer?.firstName ?? null,
-        total: formatMoney(
-          orderNode.currentTotalPriceSet.shopMoney.amount,
-          orderNode.currentTotalPriceSet.shopMoney.currencyCode,
-        ),
-        lineItems: orderNode.lineItems.edges.map(({ node }) => ({
-          title: node.title,
-          quantity: node.quantity,
-          imageUrl: node.image?.url ?? null,
-          imageAlt: node.image?.altText ?? node.title,
-          total: formatMoney(
-            node.originalTotalSet.shopMoney.amount,
-            node.originalTotalSet.shopMoney.currencyCode,
-          ),
-        })),
-      }
-    : null;
-
-  const cartNode = data.abandonedCheckouts.edges[0]?.node ?? null;
-  const cart = cartNode
-    ? {
-        recoveryUrl: cartNode.abandonedCheckoutUrl,
-        customerFirstName: cartNode.customer?.firstName ?? null,
-        total: formatMoney(
-          cartNode.totalPriceSet.shopMoney.amount,
-          cartNode.totalPriceSet.shopMoney.currencyCode,
-        ),
-        lineItems: cartNode.lineItems.edges.map(({ node }) => ({
-          title: node.title ?? "Item",
-          quantity: node.quantity,
-          imageUrl: node.image?.url ?? null,
-          imageAlt: node.image?.altText ?? node.title ?? "Item",
-          total: formatMoney(
-            node.originalTotalPriceSet.shopMoney.amount,
-            node.originalTotalPriceSet.shopMoney.currencyCode,
-          ),
-        })),
-      }
-    : null;
-
-  const shippedOrderNode = data.shippedOrders.edges[0]?.node ?? null;
-  const fulfillment = shippedOrderNode?.fulfillments[0] ?? null;
-  const tracking = fulfillment?.trackingInfo[0] ?? null;
-  const shippingUpdate =
-    shippedOrderNode && fulfillment
-      ? {
-          orderNumber: shippedOrderNode.name,
-          customerFirstName: shippedOrderNode.customer?.firstName ?? null,
-          fulfillmentStatus: formatFulfillmentStatus(fulfillment.displayStatus),
-          trackingNumber: tracking?.number ?? null,
-          carrierName: tracking?.company ?? null,
-          trackingUrl: tracking?.url ?? null,
-          estimatedDelivery: fulfillment.estimatedDeliveryAt
-            ? formatDeliveryDate(fulfillment.estimatedDeliveryAt)
-            : null,
-          lineItems: shippedOrderNode.lineItems.edges.map(({ node }) => ({
-            title: node.title,
-            quantity: node.quantity,
-            imageUrl: node.image?.url ?? null,
-            imageAlt: node.image?.altText ?? node.title,
-          })),
-        }
-      : null;
-
-  // Reuses the same shippedOrders fetch above rather than a separate
-  // query — a review request is just that order once its fulfillment is
-  // confirmed delivered, not shipped-but-in-transit.
-  const reviewRequest =
-    shippingUpdate && shippingUpdate.fulfillmentStatus === "delivered"
-      ? {
-          orderNumber: shippingUpdate.orderNumber,
-          customerFirstName: shippingUpdate.customerFirstName,
-          reviewUrl:
-            shippedOrderNode!.lineItems.edges[0]?.node.product?.onlineStoreUrl ??
-            null,
-          lineItems: shippingUpdate.lineItems,
-        }
-      : null;
-
-  const refundedOrderNode = data.refundedOrders.edges.find(
-    ({ node }) => node.refunds.length > 0,
-  )?.node;
-  const refundNode = refundedOrderNode?.refunds.at(-1) ?? null;
-  const refund =
-    refundedOrderNode && refundNode
-      ? {
-          orderNumber: refundedOrderNode.name,
-          customerFirstName: refundedOrderNode.customer?.firstName ?? null,
-          reason: refundNode.note,
-          total: formatMoney(
-            refundNode.totalRefundedSet.shopMoney.amount,
-            refundNode.totalRefundedSet.shopMoney.currencyCode,
-          ),
-          lineItems: refundNode.refundLineItems.edges.map(({ node }) => ({
-            title: node.lineItem.title,
-            quantity: node.quantity,
-            imageUrl: node.lineItem.image?.url ?? null,
-            imageAlt: node.lineItem.image?.altText ?? node.lineItem.title,
-            total: formatMoney(
-              node.subtotalSet.shopMoney.amount,
-              node.subtotalSet.shopMoney.currencyCode,
-            ),
-          })),
-        }
-      : null;
+  const { shopName, themeName, products, order, cart, shippingUpdate, reviewRequest, refund } =
+    await loadDashboardData(admin);
 
   return {
-    shopName: data.shop.name,
+    shopName,
     shopDomain: session.shop,
-    themeName: data.themes.nodes[0]?.name ?? null,
+    themeName,
     products,
     order,
     cart,
@@ -522,19 +81,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         where: { shop: session.shop, status: "pending" },
       }),
     },
-    lifecycleTemplateChoices: Object.fromEntries(
-      (await db.lifecycleTemplateChoice.findMany({ where: { shop: session.shop } })).map(
-        (row) => [
-          row.slotId,
-          {
-            mode: row.mode as "ai" | "template",
-            logoUrl: row.logoUrl,
-            primaryColor: row.primaryColor,
-            buttonText: row.buttonText,
-          },
-        ],
-      ),
-    ) as Partial<Record<LifecycleEmailId, LifecycleTemplateCustomization & { mode: "ai" | "template" }>>,
   };
 };
 
@@ -682,15 +228,7 @@ type DashboardActionRequest =
   | { kind: "set-sending"; enabled: boolean }
   | { kind: "set-receipt-sending"; enabled: boolean }
   | { kind: "set-language"; language: EmailLanguage }
-  | { kind: "set-tone"; tone: EmailTone }
-  | {
-      kind: "set-lifecycle-template";
-      slotId: LifecycleEmailId;
-      mode: "ai" | "template";
-      logoUrl: string | null;
-      primaryColor: string | null;
-      buttonText: string | null;
-    };
+  | { kind: "set-tone"; tone: EmailTone };
 
 // The dashboard reloads its loader data (and re-fires generation) on every
 // page load, so identical order/cart/etc. data would otherwise re-call
@@ -753,32 +291,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         where: { shop: session.shop },
         create: { shop: session.shop, tone: parsed.tone },
         update: { tone: parsed.tone },
-      });
-      return { deliveryUpdated: true };
-    }
-    if (parsed.kind === "set-lifecycle-template") {
-      if (!(parsed.slotId in LIFECYCLE_TEMPLATE_COPY)) {
-        return { error: "Unknown lifecycle email." };
-      }
-      if (parsed.mode !== "ai" && parsed.mode !== "template") {
-        return { error: "Unknown template mode." };
-      }
-      await db.lifecycleTemplateChoice.upsert({
-        where: { shop_slotId: { shop: session.shop, slotId: parsed.slotId } },
-        create: {
-          shop: session.shop,
-          slotId: parsed.slotId,
-          mode: parsed.mode,
-          logoUrl: parsed.logoUrl,
-          primaryColor: parsed.primaryColor,
-          buttonText: parsed.buttonText,
-        },
-        update: {
-          mode: parsed.mode,
-          logoUrl: parsed.logoUrl,
-          primaryColor: parsed.primaryColor,
-          buttonText: parsed.buttonText,
-        },
       });
       return { deliveryUpdated: true };
     }
@@ -954,7 +466,6 @@ export default function Index() {
     reviewRequest,
     refund,
     delivery,
-    lifecycleTemplateChoices,
   } = useLoaderData<typeof loader>();
   const [campaign] = useState("");
   const [language, setLanguage] = useState<EmailLanguage>(
@@ -973,31 +484,8 @@ export default function Index() {
     Partial<Record<LifecycleEmailId, string>>
   >({});
   const [requestedLifecycleIds, setRequestedLifecycleIds] = useState<LifecycleEmailId[]>([]);
-  // A merchant's choice of real template vs. AI for each lifecycle slot,
-  // plus its small set of editable values. Seeded from the persisted rows;
-  // edits update local state immediately (the settings form and preview
-  // don't wait on the round trip) and are saved via templateFetcher.
-  const [templateChoices, setTemplateChoices] = useState<
-    Partial<Record<LifecycleEmailId, { mode: "ai" | "template" } & LifecycleTemplateCustomization>>
-  >(lifecycleTemplateChoices);
   const deliveryFetcher = useFetcher<typeof action>();
   const lifecycleFetcher = useFetcher<typeof action>();
-  const templateFetcher = useFetcher<typeof action>();
-
-  const getTemplateChoice = (id: LifecycleEmailId) =>
-    templateChoices[id] ?? { mode: "ai" as const, logoUrl: null, primaryColor: null, buttonText: null };
-
-  const updateTemplateChoice = (
-    id: LifecycleEmailId,
-    patch: Partial<{ mode: "ai" | "template" } & LifecycleTemplateCustomization>,
-  ) => {
-    const next = { ...getTemplateChoice(id), ...patch };
-    setTemplateChoices((current) => ({ ...current, [id]: next }));
-    templateFetcher.submit(
-      { payload: JSON.stringify({ kind: "set-lifecycle-template", slotId: id, ...next }) },
-      { method: "POST" },
-    );
-  };
 
   const onboardingStorageKey = `nomi:onboarding:${shopName}:${ONBOARDING_VERSION}`;
 
@@ -1012,104 +500,7 @@ export default function Index() {
     setShowOnboarding(!isComplete);
   }, [onboardingStorageKey]);
 
-  const storefrontProducts: NewsletterCampaign["products"] = products.map((product) => ({
-    title: product.title,
-    price: product.price,
-    imageUrl: product.imageUrl,
-    productUrl: product.productUrl,
-  }));
-  const orderProducts: NewsletterCampaign["products"] = order
-    ? order.lineItems.map((item) => ({
-        title: item.title,
-        price: item.total,
-        imageUrl: item.imageUrl,
-        productUrl: null,
-      }))
-    : storefrontProducts;
-  const cartProducts: NewsletterCampaign["products"] = cart
-    ? cart.lineItems.map((item) => ({
-        title: item.title,
-        price: item.total,
-        imageUrl: item.imageUrl,
-        productUrl: null,
-      }))
-    : storefrontProducts;
-  const reviewProducts: NewsletterCampaign["products"] = reviewRequest
-    ? reviewRequest.lineItems.map((item, index) => ({
-        title: item.title,
-        price: "",
-        imageUrl: item.imageUrl,
-        productUrl: index === 0 ? reviewRequest.reviewUrl : null,
-      }))
-    : storefrontProducts;
-
-  const lifecycleInputs: Record<LifecycleEmailId, LifecycleEmail> = {
-    "welcome-1": {
-      id: "welcome-1", shopName, language, tone, sequenceName: "Welcome Journey", emailName: "1st Welcome Email",
-      position: 1, sequenceLength: 3, timing: "On trigger", objective: "Welcome a new subscriber and introduce the store in a warm, plain voice.",
-      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
-    },
-    "welcome-2": {
-      id: "welcome-2", shopName, language, tone, sequenceName: "Welcome Journey", emailName: "2nd Welcome Email",
-      position: 2, sequenceLength: 3, timing: "48 hour(s) from previous", objective: "Explain what makes the store and its products worth remembering without repeating the first welcome.",
-      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
-    },
-    "welcome-3": {
-      id: "welcome-3", shopName, language, tone, sequenceName: "Welcome Journey", emailName: "3rd Welcome Email",
-      position: 3, sequenceLength: 3, timing: "2 day(s) from previous", objective: "Close the welcome journey with a useful selection of real products and an understated invitation to shop.",
-      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
-    },
-    "interest-1": {
-      id: "interest-1", shopName, language, tone, sequenceName: "Product Interest Follow-Up", emailName: "1st Follow-Up Email",
-      position: 1, sequenceLength: 2, timing: "4 hour(s) after product interest", objective: "Offer a helpful closer look at relevant products without sounding like surveillance.",
-      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
-    },
-    "interest-2": {
-      id: "interest-2", shopName, language, tone, sequenceName: "Product Interest Follow-Up", emailName: "2nd Follow-Up Email",
-      position: 2, sequenceLength: 2, timing: "2 day(s) from previous", objective: "Give a final useful product follow-up with practical context and no invented promotion.",
-      customerFirstName: null, products: storefrontProducts, orderNumber: null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
-    },
-    "cart-1": {
-      id: "cart-1", shopName, language, tone, sequenceName: "Abandoned Cart", emailName: "1st Cart Email",
-      position: 1, sequenceLength: 3, timing: "1 hour after checkout activity", objective: "Send a gentle reminder that the checkout is saved.",
-      customerFirstName: cart?.customerFirstName ?? null, products: cartProducts, orderNumber: null, orderTotal: cart?.total ?? null, recoveryUrl: cart?.recoveryUrl ?? null, reviewUrl: null,
-    },
-    "cart-2": {
-      id: "cart-2", shopName, language, tone, sequenceName: "Abandoned Cart", emailName: "2nd Cart Email",
-      position: 2, sequenceLength: 3, timing: "24 hour(s) from previous", objective: "Follow up with practical reassurance and the real saved products, without inventing an offer.",
-      customerFirstName: cart?.customerFirstName ?? null, products: cartProducts, orderNumber: null, orderTotal: cart?.total ?? null, recoveryUrl: cart?.recoveryUrl ?? null, reviewUrl: null,
-    },
-    "cart-3": {
-      id: "cart-3", shopName, language, tone, sequenceName: "Abandoned Cart", emailName: "3rd Cart Email",
-      position: 3, sequenceLength: 3, timing: "48 hour(s) from previous", objective: "Send one final quiet reminder, with no false urgency, discount, or expiry.",
-      customerFirstName: cart?.customerFirstName ?? null, products: cartProducts, orderNumber: null, orderTotal: cart?.total ?? null, recoveryUrl: cart?.recoveryUrl ?? null, reviewUrl: null,
-    },
-    "thank-you": {
-      id: "thank-you", shopName, language, tone, sequenceName: "Customer Care & Reviews", emailName: "Thank You Email",
-      position: 1, sequenceLength: 2, timing: "After purchase", objective: "Thank the customer warmly without duplicating the legal order receipt or inventing delivery details.",
-      customerFirstName: order?.customerFirstName ?? null, products: orderProducts, orderNumber: order?.name ?? null, orderTotal: order?.total ?? null, recoveryUrl: null, reviewUrl: null,
-    },
-    "review-request": {
-      id: "review-request", shopName, language, tone, sequenceName: "Customer Care & Reviews", emailName: "Review Request",
-      position: 2, sequenceLength: 2, timing: "7 day(s) after delivery", objective: "Ask for a product review in a brief, considerate way, only linking when a real review URL exists.",
-      customerFirstName: reviewRequest?.customerFirstName ?? order?.customerFirstName ?? null, products: reviewProducts, orderNumber: reviewRequest?.orderNumber ?? order?.name ?? null, orderTotal: null, recoveryUrl: null, reviewUrl: reviewRequest?.reviewUrl ?? null,
-    },
-    "winback-1": {
-      id: "winback-1", shopName, language, tone, sequenceName: "Winback Journey", emailName: "1st Winback Email",
-      position: 1, sequenceLength: 3, timing: "30 day(s) after last order", objective: "Reconnect with a past customer by showing what is current, without guilt or an invented offer.",
-      customerFirstName: order?.customerFirstName ?? null, products: storefrontProducts, orderNumber: order?.name ?? null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
-    },
-    "winback-2": {
-      id: "winback-2", shopName, language, tone, sequenceName: "Winback Journey", emailName: "2nd Winback Email",
-      position: 2, sequenceLength: 3, timing: "14 day(s) from previous", objective: "Share a fresh, product-led reason to return without repeating the first winback email.",
-      customerFirstName: order?.customerFirstName ?? null, products: storefrontProducts, orderNumber: order?.name ?? null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
-    },
-    "winback-3": {
-      id: "winback-3", shopName, language, tone, sequenceName: "Winback Journey", emailName: "3rd Winback Email",
-      position: 3, sequenceLength: 3, timing: "30 day(s) from previous", objective: "Close the winback journey with a quiet final invitation and no false urgency.",
-      customerFirstName: order?.customerFirstName ?? null, products: storefrontProducts, orderNumber: order?.name ?? null, orderTotal: null, recoveryUrl: null, reviewUrl: null,
-    },
-  };
+  const lifecycleInputs = buildLifecycleInputs({ shopName, language, tone, products, order, cart, reviewRequest });
   const allLifecycleIds = Object.keys(lifecycleInputs) as LifecycleEmailId[];
   const lifecycleError =
     lifecycleFetcher.data && "error" in lifecycleFetcher.data
@@ -1445,84 +836,17 @@ export default function Index() {
   void flowGroups;
   void generateAllEmails;
 
-  const referenceTemplateDefinitions: Array<
-    Omit<ReferenceFlowTemplate, "generatedHtml" | "isGenerating" | "error" | "onGenerate">
-  > = [
-    { id: "welcome-1", flowId: "welcome", name: "1st Welcome Email", subject: `Welcome to ${shopName}`, previewText: "Your welcome gift awaits", timing: "On trigger" },
-    { id: "welcome-2", flowId: "welcome", name: "2nd Welcome Email", subject: `A little more about ${shopName}`, previewText: "What makes this store different", timing: "48 hour(s) from previous" },
-    { id: "welcome-3", flowId: "welcome", name: "3rd Welcome Email", subject: "A few customer favorites", previewText: "Real products, chosen for you", timing: "2 day(s) from previous" },
-    { id: "interest-1", flowId: "interest", name: "1st Follow-Up Email", subject: "A closer look", previewText: "A useful follow-up from the store", timing: "4 hour(s) after product interest" },
-    { id: "interest-2", flowId: "interest", name: "2nd Follow-Up Email", subject: "Still considering it?", previewText: "The details that might help", timing: "2 day(s) from previous" },
-    { id: "cart-1", flowId: "cart", name: "1st Cart Email", subject: "You left something behind", previewText: "Your checkout is still saved", timing: "1 hour after checkout activity" },
-    { id: "cart-2", flowId: "cart", name: "2nd Cart Email", subject: "Still thinking it over?", previewText: "A simple way back to your cart", timing: "24 hour(s) from previous" },
-    { id: "cart-3", flowId: "cart", name: "3rd Cart Email", subject: "One last quiet reminder", previewText: "Your saved items are here", timing: "48 hour(s) from previous" },
-    { id: "thank-you", flowId: "care", name: "Thank You Email", subject: `Thank you from ${shopName}`, previewText: "A note of appreciation", timing: "After purchase" },
-    { id: "review-request", flowId: "care", name: "Review Request", subject: "How did it wear?", previewText: "Tell us what you think", timing: "7 day(s) after delivery" },
-    { id: "winback-1", flowId: "winback", name: "1st Winback Email", subject: "A few things worth seeing", previewText: `What is new at ${shopName}`, timing: "30 day(s) after last order" },
-    { id: "winback-2", flowId: "winback", name: "2nd Winback Email", subject: "Something new for your next visit", previewText: "A fresh product edit", timing: "14 day(s) from previous" },
-    { id: "winback-3", flowId: "winback", name: "3rd Winback Email", subject: "The door is open", previewText: "A final note from the store", timing: "30 day(s) from previous" },
-  ];
-  const referenceTemplates: ReferenceFlowTemplate[] = referenceTemplateDefinitions.map((template) => {
-    const choice = getTemplateChoice(template.id);
-    if (choice.mode === "template") {
-      // Real templates render instantly, client-side, with no AI call —
-      // renderLifecycleTemplateHtml is a pure function of the same
-      // LifecycleEmail data the AI path already assembles.
-      return {
-        ...template,
-        generatedHtml: renderLifecycleTemplateHtml(lifecycleInputs[template.id], choice),
-        isGenerating: false,
-        error: null,
-        onGenerate: () => {},
-      };
-    }
-    return {
-      ...template,
-      generatedHtml: generatedLifecycleEmails[template.id] ?? null,
-      isGenerating:
-        lifecycleFetcher.state !== "idle" && requestedLifecycleIds.includes(template.id),
-      error: lifecycleError,
-      onGenerate: () => generateLifecycleEmails([template.id]),
-    };
-  });
+  const referenceTemplateDefinitions = buildLifecycleSlots(shopName);
+  const referenceTemplates: ReferenceFlowTemplate[] = referenceTemplateDefinitions.map((template) => ({
+    ...template,
+    generatedHtml: generatedLifecycleEmails[template.id] ?? null,
+    isGenerating:
+      lifecycleFetcher.state !== "idle" && requestedLifecycleIds.includes(template.id),
+    error: lifecycleError,
+    onGenerate: () => generateLifecycleEmails([template.id]),
+  }));
 
-  const referenceFlows = [
-    {
-      id: "welcome" as const,
-      name: "Welcome Journey",
-      trigger: "Valid email is entered in a pop-up or email field.",
-      stop: "User places an order · User was in flow in the last 7 days.",
-      templateIds: ["welcome-1", "welcome-2", "welcome-3"] as LifecycleEmailId[],
-    },
-    {
-      id: "interest" as const,
-      name: "Product Interest Follow-Up",
-      trigger: "A consented customer shows product interest without purchasing.",
-      stop: "User places an order · User enters Abandoned Cart.",
-      templateIds: ["interest-1", "interest-2"] as LifecycleEmailId[],
-    },
-    {
-      id: "cart" as const,
-      name: "Abandoned Cart",
-      trigger: "A consented checkout is left with products in it.",
-      stop: "User places an order · Checkout is no longer abandoned.",
-      templateIds: ["cart-1", "cart-2", "cart-3"] as LifecycleEmailId[],
-    },
-    {
-      id: "care" as const,
-      name: "Customer Care & Reviews",
-      trigger: "A customer places an order or a fulfilled order is delivered.",
-      stop: "The thank-you and review steps have completed.",
-      templateIds: ["thank-you", "review-request"] as LifecycleEmailId[],
-    },
-    {
-      id: "winback" as const,
-      name: "Winback Journey",
-      trigger: "A past customer has not ordered again within the winback window.",
-      stop: "User places an order · User was in flow in the last 90 days.",
-      templateIds: ["winback-1", "winback-2", "winback-3"] as LifecycleEmailId[],
-    },
-  ];
+  const referenceFlows = LIFECYCLE_FLOWS;
 
   const selectedTemplate =
     referenceTemplates.find(({ id }) => id === selectedTemplateId) ?? referenceTemplates[0];
@@ -1530,7 +854,6 @@ export default function Index() {
     referenceFlows.find(({ id }) => id === selectedTemplate.flowId) ?? referenceFlows[0];
   const generatedCount = referenceTemplates.filter(({ generatedHtml }) => Boolean(generatedHtml)).length;
   const isGeneratingAny = lifecycleFetcher.state !== "idle";
-  const selectedTemplateChoice = getTemplateChoice(selectedTemplateId);
 
   const startTrial = () => {
     setTrialStarted(true);
@@ -1763,72 +1086,15 @@ export default function Index() {
                 <span>{selectedTemplate.name} — preview</span>
                 <h2 className="nomi-visually-hidden" id="nomi-flow-proof-title">{selectedTemplate.subject}</h2>
               </div>
-              <div className="nomi-flow-proof-topline-actions">
-                <div className="nomi-flow-mode-toggle" role="group" aria-label="Email source">
-                  <button
-                    type="button"
-                    className={selectedTemplateChoice.mode === "ai" ? "is-active" : undefined}
-                    onClick={() => updateTemplateChoice(selectedTemplateId, { mode: "ai" })}
-                  >
-                    AI
-                  </button>
-                  <button
-                    type="button"
-                    className={selectedTemplateChoice.mode === "template" ? "is-active" : undefined}
-                    onClick={() => updateTemplateChoice(selectedTemplateId, { mode: "template" })}
-                  >
-                    Template
-                  </button>
-                </div>
-                {selectedTemplateChoice.mode === "ai" ? (
-                  <button
-                    className="nomi-flow-proof-action"
-                    type="button"
-                    disabled={EMAIL_GENERATION_PAUSED || selectedTemplate.isGenerating || isGeneratingAny}
-                    onClick={selectedTemplate.onGenerate}
-                  >
-                    {EMAIL_GENERATION_PAUSED ? "Paused" : selectedTemplate.isGenerating ? "Writing…" : selectedTemplate.generatedHtml ? "Edit⌄" : "Generate"}
-                  </button>
-                ) : null}
-              </div>
+              <button
+                className="nomi-flow-proof-action"
+                type="button"
+                disabled={EMAIL_GENERATION_PAUSED || selectedTemplate.isGenerating || isGeneratingAny}
+                onClick={selectedTemplate.onGenerate}
+              >
+                {EMAIL_GENERATION_PAUSED ? "Paused" : selectedTemplate.isGenerating ? "Writing…" : selectedTemplate.generatedHtml ? "Edit⌄" : "Generate"}
+              </button>
             </div>
-
-            {selectedTemplateChoice.mode === "template" ? (
-              <div className="nomi-flow-template-settings">
-                <label>
-                  <span>Logo URL</span>
-                  <input
-                    type="text"
-                    placeholder="https://…"
-                    value={selectedTemplateChoice.logoUrl ?? ""}
-                    onChange={(event) =>
-                      updateTemplateChoice(selectedTemplateId, { logoUrl: event.target.value || null })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Primary color</span>
-                  <input
-                    type="color"
-                    value={selectedTemplateChoice.primaryColor ?? "#57534b"}
-                    onChange={(event) =>
-                      updateTemplateChoice(selectedTemplateId, { primaryColor: event.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Button text</span>
-                  <input
-                    type="text"
-                    placeholder={LIFECYCLE_TEMPLATE_COPY[selectedTemplateId].ctaLabel}
-                    value={selectedTemplateChoice.buttonText ?? ""}
-                    onChange={(event) =>
-                      updateTemplateChoice(selectedTemplateId, { buttonText: event.target.value || null })
-                    }
-                  />
-                </label>
-              </div>
-            ) : null}
 
             <div className="nomi-flow-inbox-meta">
               <div><strong>From</strong><span>{delivery.fromAddress ?? `${shopName} via Nomi`}</span></div>

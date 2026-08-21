@@ -37,7 +37,7 @@ export default function App() {
         <s-link href="/app/contacts">Contacts</s-link>
         <s-link href="/app/campaigns">Campaigns</s-link>
         <s-link href="/app/brand-settings">Brand &amp; Settings</s-link>
-        <s-link href="/app/additional">Additional page</s-link>
+        <s-link href="/app/additional">Templates</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>
