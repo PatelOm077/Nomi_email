@@ -1624,6 +1624,86 @@
   border-color: var(--nomi-neutral-300);
   font-size: 10px;
 }
+/* Templates page (app.additional.tsx): the AI/Template mode toggle and the
+   settings form shown when a slot is in Template mode. Generic, token-based
+   — not scoped to the Flow Editor's proof panel, even though it sits inside
+   the same .nomi-flow-proof shell for layout consistency. */
+.nomi-mode-toggle {
+  display: flex;
+  flex: none;
+  border: 1px solid var(--nomi-neutral-300);
+  border-radius: var(--nomi-radius-md);
+  overflow: hidden;
+}
+.nomi-mode-toggle button {
+  min-height: 34px;
+  padding: 7px 14px;
+  border: 0;
+  background: var(--nomi-white);
+  color: var(--nomi-neutral-700);
+  font: 700 10px var(--nomi-font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.nomi-mode-toggle button + button {
+  border-left: 1px solid var(--nomi-neutral-300);
+}
+.nomi-mode-toggle button.is-active {
+  background: var(--nomi-cyan-100);
+  color: var(--nomi-cyan-800);
+}
+.nomi-template-settings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 14px;
+  background: #faf8f7;
+  border-bottom: 1px solid var(--nomi-neutral-200);
+}
+.nomi-template-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--nomi-neutral-700);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.nomi-template-settings input {
+  box-sizing: border-box;
+  padding: 8px 10px;
+  color: var(--nomi-ink);
+  background: var(--nomi-white);
+  border: 1px solid var(--nomi-neutral-300);
+  border-radius: var(--nomi-radius-md);
+  font: 12px var(--nomi-font-ui);
+}
+.nomi-template-settings input[type="color"] {
+  padding: 3px;
+  height: 32px;
+}
+.nomi-template-settings input:focus-visible {
+  border-color: var(--nomi-cyan);
+  outline: 2px solid color-mix(in srgb, var(--nomi-cyan) 22%, transparent);
+}
+.nomi-templates-ai-note {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+  margin: 60px auto;
+  text-align: center;
+  color: var(--nomi-neutral-700);
+}
+.nomi-templates-ai-note strong {
+  font: 600 16px var(--nomi-font-heading);
+  color: var(--nomi-ink);
+}
+.nomi-templates-ai-note span {
+  font: 13px/1.5 var(--nomi-font-ui);
+}
 .nomi-flow-inbox-meta {
   padding: 12px 14px;
   display: grid;

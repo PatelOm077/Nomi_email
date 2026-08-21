@@ -54,6 +54,25 @@ model ShopSettings {
   updatedAt      DateTime @updatedAt
 }
 
+// A merchant's choice of real (non-AI) template for one lifecycle email
+// slot, plus its small set of editable values. Everything else about
+// lifecycle emails today is stateless-per-request (see the in-memory
+// previewCache in app._index.tsx) — this is the first thing that actually
+// needs to survive a page reload.
+model LifecycleTemplateChoice {
+  id           String   @id @default(cuid())
+  shop         String
+  slotId       String
+  mode         String   @default("ai") // "ai" | "template"
+  logoUrl      String?
+  primaryColor String?
+  buttonText   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([shop, slotId])
+}
+
 model EmailJob {
   id                String    @id @default(cuid())
   webhookId         String    @unique
