@@ -38,124 +38,14 @@
   --nomi-shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
 }
 
-/* — page shell — */
-.nomi-page {
-  min-height: 100vh;
-  background: var(--nomi-paper);
-  color: var(--nomi-ink);
-  font-family: var(--nomi-font-ui);
-  padding: var(--nomi-space-8) var(--nomi-space-8) 80px;
-}
-.nomi-shell {
-  max-width: 1040px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 72px;
-}
-
 /* — header — */
-.nomi-header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--nomi-space-4);
-}
 .nomi-brand {
   display: flex;
   align-items: center;
   gap: var(--nomi-space-3);
 }
-.nomi-mark {
-  width: 40px;
-  height: 40px;
-  flex: none;
-  background: var(--nomi-ink);
-  border-radius: var(--nomi-radius-lg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.nomi-wordmark {
-  font: 600 24px/1 var(--nomi-font-heading);
-  letter-spacing: -0.03em;
-}
-.nomi-brand-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--nomi-neutral-300);
-}
-.nomi-shop {
-  font-size: 14px;
-  color: var(--nomi-neutral-700);
-}
-.nomi-replay-button {
-  margin-left: auto;
-  padding: 6px 0;
-  color: var(--nomi-neutral-700);
-  background: transparent;
-  border: 0;
-  font: 600 12px var(--nomi-font-ui);
-  cursor: pointer;
-}
-.nomi-replay-button:hover {
-  color: var(--nomi-cyan-700);
-}
-.nomi-headline {
-  margin: 0;
-  font: 600 34px/1.2 var(--nomi-font-heading);
-  letter-spacing: -0.02em;
-}
-.nomi-delivery-strip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--nomi-space-4);
-  padding: var(--nomi-space-4);
-  background: var(--nomi-white);
-  border-left: 3px solid var(--nomi-cyan);
-  border-radius: var(--nomi-radius-md);
-  box-shadow: var(--nomi-shadow-sm);
-}
-.nomi-delivery-strip > div {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 13px;
-}
-.nomi-delivery-strip span {
-  color: var(--nomi-neutral-700);
-}
-.nomi-text-button {
-  flex: none;
-  padding: 0;
-  color: var(--nomi-cyan-700);
-  background: none;
-  border: 0;
-  font: 600 13px var(--nomi-font-ui);
-  cursor: pointer;
-}
-.nomi-text-button:disabled {
-  opacity: 0.45;
-  cursor: wait;
-}
 
 /* — sections — */
-.nomi-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--nomi-space-6);
-}
-.nomi-section-heading {
-  margin: 0;
-  font: 600 22px/1.2 var(--nomi-font-heading);
-  letter-spacing: -0.02em;
-}
-.nomi-section-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--nomi-space-4);
-}
 .nomi-language-field {
   display: flex;
   align-items: center;
@@ -205,58 +95,6 @@
   cursor: not-allowed;
 }
 
-/* — template cards — */
-.nomi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(226px, 1fr));
-  gap: var(--nomi-space-6);
-}
-.nomi-card {
-  background: var(--nomi-white);
-  border-radius: var(--nomi-radius-md);
-  box-shadow: var(--nomi-shadow-sm);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.nomi-card-footer {
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.nomi-card-name {
-  font-weight: 600;
-  font-size: 14px;
-}
-.nomi-badge {
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: var(--nomi-radius-md);
-  white-space: nowrap;
-}
-.nomi-badge-live {
-  color: var(--nomi-cyan-800);
-  background: var(--nomi-cyan-100);
-}
-.nomi-badge-draft {
-  color: var(--nomi-neutral-700);
-  background: var(--nomi-neutral-200);
-}
-.nomi-badge-warning {
-  color: var(--nomi-magenta);
-  background: color-mix(in srgb, var(--nomi-magenta) 12%, var(--nomi-white));
-}
-
-/* — duplicate-mail warning strip: the one deliberate magenta accent — */
-.nomi-delivery-strip-warning {
-  border-left-color: var(--nomi-magenta);
-}
-.nomi-text-button-warning {
-  color: var(--nomi-magenta);
-}
-
 /* — email previews inside the cards — */
 .nomi-preview {
   height: 208px;
@@ -299,123 +137,6 @@
   background: #f7f1e8;
 }
 
-/* — products — */
-.nomi-products-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--nomi-space-4);
-}
-.nomi-product-tile {
-  width: 120px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.nomi-product-thumb {
-  width: 120px;
-  height: 120px;
-  object-fit: cover;
-  background: var(--nomi-neutral-200);
-  border-radius: var(--nomi-radius-md);
-  box-shadow: var(--nomi-shadow-sm);
-}
-.nomi-product-title {
-  font-size: 13px;
-  color: var(--nomi-ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.nomi-product-price {
-  font-size: 13px;
-  color: var(--nomi-neutral-700);
-}
-.nomi-hint {
-  margin: 0;
-  font-size: 13px;
-  color: var(--nomi-neutral-700);
-}
-
-/* — campaign form — */
-.nomi-campaign-section {
-  max-width: 640px;
-  gap: var(--nomi-space-4);
-}
-.nomi-form {
-  display: flex;
-  gap: var(--nomi-space-3);
-  align-items: center;
-}
-.nomi-input {
-  flex: 1;
-  min-width: 0;
-  min-height: 40px;
-  padding: 11px 14px;
-  font-family: var(--nomi-font-ui);
-  font-size: 14px;
-  color: var(--nomi-ink);
-  caret-color: var(--nomi-cyan);
-  background: var(--nomi-white);
-  border: 1px solid color-mix(in srgb, var(--nomi-ink) 16%, transparent);
-  border-radius: var(--nomi-radius-md);
-}
-.nomi-input::placeholder {
-  color: color-mix(in srgb, var(--nomi-ink) 65%, transparent);
-  opacity: 1;
-}
-.nomi-input:hover {
-  border-color: color-mix(in srgb, var(--nomi-ink) 45%, transparent);
-}
-.nomi-input:focus-visible {
-  border-color: var(--nomi-cyan);
-  outline: none;
-}
-.nomi-button {
-  flex: none;
-  cursor: pointer;
-  font-family: var(--nomi-font-ui);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-  color: var(--nomi-paper);
-  background: var(--nomi-cyan);
-  border: 1px solid transparent;
-  border-radius: var(--nomi-radius-md);
-  padding: var(--nomi-space-2) 18px;
-  min-height: 40px;
-}
-.nomi-button:hover {
-  background: var(--nomi-cyan-600);
-}
-.nomi-button:active {
-  background: var(--nomi-cyan-700);
-}
-.nomi-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.nomi-form-error {
-  margin: 0;
-  color: #9f1239;
-  font-size: 13px;
-}
-.nomi-campaign-preview {
-  overflow: hidden;
-  border-radius: var(--nomi-radius-md);
-  box-shadow: var(--nomi-shadow-sm);
-}
-
-@media (max-width: 560px) {
-  .nomi-section-title-row,
-  .nomi-form {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .nomi-language-field {
-    justify-content: space-between;
-  }
-}
 /* Label the campaign input for screen readers without showing a visible
    label — the mockup relies on the placeholder alone. */
 .nomi-visually-hidden {
@@ -427,11 +148,6 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-.nomi-page :focus-visible {
-  outline: 2px solid var(--nomi-cyan);
-  outline-offset: 2px;
 }
 
 /* — exact flow-editor reference treatment (2026-08-18) — */
@@ -1097,7 +813,6 @@
 .nomi-flow-title,
 .nomi-flow-header-actions,
 .nomi-flow-heading-line,
-.nomi-flow-notice,
 .nomi-flow-proof-topline {
   display: flex;
   align-items: center;
@@ -1105,22 +820,6 @@
 .nomi-flow-title {
   min-width: 0;
   gap: 14px;
-}
-.nomi-flow-logo {
-  width: 38px;
-  height: 38px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  color: var(--nomi-paper);
-  background: var(--nomi-ink);
-  border: 1px solid var(--nomi-ink);
-  border-radius: var(--nomi-radius-md);
-}
-.nomi-flow-logo svg {
-  width: 21px;
-  height: 21px;
 }
 .nomi-flow-title h1 {
   margin: 0;
@@ -1180,8 +879,7 @@
 }
 .nomi-flow-primary,
 .nomi-flow-proof-action,
-.nomi-flow-generate,
-.nomi-flow-campaign-form button {
+.nomi-flow-generate {
   min-height: 38px;
   padding: 8px 14px;
   color: var(--nomi-paper);
@@ -1193,116 +891,9 @@
 }
 .nomi-flow-primary:disabled,
 .nomi-flow-proof-action:disabled,
-.nomi-flow-generate:disabled,
-.nomi-flow-campaign-form button:disabled {
+.nomi-flow-generate:disabled {
   opacity: 0.42;
   cursor: not-allowed;
-}
-.nomi-flow-notices {
-  margin: 18px 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.nomi-flow-notice {
-  min-width: 0;
-  min-height: 82px;
-  box-sizing: border-box;
-  gap: 12px;
-  padding: 14px 16px;
-  background: var(--nomi-white);
-  border: 1px solid var(--nomi-neutral-300);
-  border-left: 3px solid var(--nomi-neutral-600);
-  border-radius: var(--nomi-radius-md);
-}
-.nomi-flow-notice-ai {
-  border-left-color: var(--nomi-cyan);
-}
-.nomi-flow-notice.is-live {
-  border-left-color: #168257;
-}
-.nomi-flow-notice-icon {
-  width: 24px;
-  height: 24px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  color: var(--nomi-cyan-800);
-  background: var(--nomi-cyan-100);
-  border-radius: 50%;
-  font-size: 12px;
-  font-weight: 800;
-}
-.nomi-flow-notice.is-live .nomi-flow-notice-icon {
-  color: #116340;
-  background: #e7f6ed;
-}
-.nomi-flow-notice > div {
-  min-width: 0;
-  flex: 1;
-}
-.nomi-flow-notice strong {
-  font-size: 13px;
-}
-.nomi-flow-notice p {
-  margin: 5px 0 0;
-  color: var(--nomi-neutral-700);
-  font-size: 12px;
-  line-height: 1.45;
-}
-.nomi-flow-link {
-  flex: none;
-  padding: 6px 0;
-  color: var(--nomi-cyan-700);
-  background: transparent;
-  border: 0;
-  font: 700 12px var(--nomi-font-ui);
-  cursor: pointer;
-}
-.nomi-flow-link:disabled {
-  opacity: 0.45;
-  cursor: wait;
-}
-.nomi-flow-receipt-warning {
-  min-height: 60px;
-  margin: -6px 0 18px;
-  padding: 11px 14px;
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  color: var(--nomi-ink);
-  background: color-mix(in srgb, var(--nomi-magenta) 6%, var(--nomi-white));
-  border: 1px solid color-mix(in srgb, var(--nomi-magenta) 25%, var(--nomi-neutral-300));
-  border-left: 3px solid var(--nomi-magenta);
-}
-.nomi-flow-receipt-warning > span {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  color: var(--nomi-white);
-  background: var(--nomi-magenta);
-  border-radius: 50%;
-  font-weight: 800;
-}
-.nomi-flow-receipt-warning strong {
-  font-size: 12px;
-}
-.nomi-flow-receipt-warning p {
-  margin: 3px 0 0;
-  color: var(--nomi-neutral-700);
-  font-size: 11px;
-  line-height: 1.4;
-}
-.nomi-flow-receipt-warning button {
-  padding: 7px 10px;
-  color: var(--nomi-magenta);
-  background: var(--nomi-white);
-  border: 1px solid color-mix(in srgb, var(--nomi-magenta) 35%, var(--nomi-neutral-300));
-  border-radius: var(--nomi-radius-md);
-  font: 700 11px var(--nomi-font-ui);
-  cursor: pointer;
 }
 .nomi-flow-workspace {
   display: grid;
@@ -1485,49 +1076,6 @@
   color: var(--nomi-cyan-800);
   background: var(--nomi-white);
   border-color: var(--nomi-cyan-300);
-  font-size: 10px;
-}
-.nomi-flow-campaign-form {
-  padding: 14px 8px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-.nomi-flow-campaign-form label {
-  color: var(--nomi-neutral-700);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.nomi-flow-campaign-form textarea {
-  min-height: 92px;
-  box-sizing: border-box;
-  padding: 10px 12px;
-  resize: vertical;
-  color: var(--nomi-ink);
-  background: var(--nomi-white);
-  border: 1px solid var(--nomi-neutral-300);
-  border-radius: var(--nomi-radius-md);
-  font: 13px/1.45 var(--nomi-font-ui);
-}
-.nomi-flow-campaign-form textarea:focus-visible {
-  border-color: var(--nomi-cyan);
-  outline: 2px solid color-mix(in srgb, var(--nomi-cyan) 22%, transparent);
-}
-.nomi-flow-campaign-form > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.nomi-flow-campaign-form > div span {
-  color: var(--nomi-neutral-600);
-  font-size: 9px;
-}
-.nomi-flow-campaign-form button {
-  min-height: 32px;
-  padding: 6px 10px;
   font-size: 10px;
 }
 .nomi-flow-rules {
@@ -1811,23 +1359,6 @@
 @media (max-width: 720px) {
   .nomi-flow-page {
     padding: 20px 12px 48px;
-  }
-  .nomi-flow-notices {
-    grid-template-columns: 1fr;
-  }
-  .nomi-flow-notice {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-  .nomi-flow-notice .nomi-flow-link {
-    margin-left: 36px;
-  }
-  .nomi-flow-receipt-warning {
-    grid-template-columns: 24px 1fr;
-  }
-  .nomi-flow-receipt-warning button {
-    grid-column: 2;
-    justify-self: start;
   }
   .nomi-flow-email-row {
     grid-template-columns: minmax(0, 1fr) auto;

@@ -1948,30 +1948,36 @@ function NomiOnboarding({
     }, reducedMotion ? 0 : ms);
   };
 
+  // Shared by every onboarding step that reveals a list one item at a time
+  // (checklist rows, day cells, found-cards): set n, wait stepMs, repeat
+  // until n reaches length, then run onDone.
+  const revealSequence = (setN: (n: number) => void, length: number, stepMs: number, onDone: () => void) => {
+    const step = (n: number) => {
+      setN(n);
+      if (n < length) after(stepMs, () => step(n + 1));
+      else onDone();
+    };
+    step(1);
+  };
+
   const goStep4 = () => {
     setStep(4);
     setGenerating(true);
     setCheckN(0);
     after(ONBOARDING_TIMING.generating, () => {
       setGenerating(false);
-      const revealCheck = (n: number) => {
-        setCheckN(n);
-        if (n < ONBOARDING_CHECKLIST.length) after(ONBOARDING_TIMING.checklistStep, () => revealCheck(n + 1));
-        else after(ONBOARDING_TIMING.finishPause, onFinish);
-      };
-      revealCheck(1);
+      revealSequence(setCheckN, ONBOARDING_CHECKLIST.length, ONBOARDING_TIMING.checklistStep, () =>
+        after(ONBOARDING_TIMING.finishPause, onFinish),
+      );
     });
   };
 
   const goStep2 = () => {
     setStep(2);
     setDayN(0);
-    const revealDay = (n: number) => {
-      setDayN(n);
-      if (n < ONBOARDING_DAYS.length) after(ONBOARDING_TIMING.dayStep, () => revealDay(n + 1));
-      else after(ONBOARDING_TIMING.daySettle, () => setStep(3));
-    };
-    revealDay(1);
+    revealSequence(setDayN, ONBOARDING_DAYS.length, ONBOARDING_TIMING.dayStep, () =>
+      after(ONBOARDING_TIMING.daySettle, () => setStep(3)),
+    );
   };
 
   useEffect(() => {
@@ -1983,12 +1989,9 @@ function NomiOnboarding({
     tokenRef.current += 1;
     setStep(1);
     setFoundN(0);
-    const revealFound = (n: number) => {
-      setFoundN(n);
-      if (n < ONBOARDING_FOUND_CARDS.length) after(ONBOARDING_TIMING.foundCardStep, () => revealFound(n + 1));
-      else after(ONBOARDING_TIMING.foundCardSettle, goStep2);
-    };
-    revealFound(1);
+    revealSequence(setFoundN, ONBOARDING_FOUND_CARDS.length, ONBOARDING_TIMING.foundCardStep, () =>
+      after(ONBOARDING_TIMING.foundCardSettle, goStep2),
+    );
   };
 
   const pickTone = (nextTone: EmailTone) => {

@@ -1,6 +1,46 @@
 # Nomi — Decisions log
 Dated one-liners. Newest at top. Reasoning survives, not just conclusion.
 
+2026-08-21 — Reliability sweep: installed dependencies fresh and confirmed
+  `npm run build`, `npm run typecheck`, `npm test`, and `npm run lint` all
+  pass clean (typecheck's one error is the pre-existing documented
+  `s-app-nav` gap in CLAUDE.md, not a regression). No runtime bug found in
+  the delivery pipeline, webhook routes, or generation engine on this pass.
+
+2026-08-21 — Removed ~470 lines of dead CSS from `app/styles/nomi.css`: an
+  entire pre-Flow-Editor dashboard stylesheet (`.nomi-page`, `.nomi-shell`,
+  `.nomi-card`, `.nomi-badge*`, `.nomi-button`, `.nomi-form*`, etc.) plus a
+  `.nomi-flow-notice`/`.nomi-flow-receipt-warning`/`.nomi-flow-campaign-form`
+  sub-family inside the current Flow Editor section, none of it referenced
+  by any route's JSX (verified with a recursive grep across every `.tsx`,
+  cross-checked against every dynamic `className={\`...\`}` construction
+  site so a template-literal-built class like `is-${hue}` wasn't mistaken
+  for dead — `.nomi-cursor-nib` was flagged unused too but is explicitly
+  documented in-file as reserved for a future page, so it stayed). Gzipped
+  CSS bundle: 61.35 KB → 52.86 KB. Build/typecheck/test/lint all still
+  clean after the cut.
+
+2026-08-21 — The onboarding orbit/found-card animation (`app._index.tsx`)
+  uses two accent hues beyond CLAUDE.md's ink/cyan/magenta dashboard-UI
+  rule: gold (`#edbb00`) and a deeper cyan (`#0088b0` at `-700`). Left as
+  is rather than recolored: the surrounding code comment ties this build to
+  "the approved mockup, pixel-for-pixel" (2026-08-19), so the extra hues
+  read as a deliberate design call that predates this note, not a slip.
+  Recording it here as the actual exception, since the CLAUDE.md rule as
+  written doesn't carve it out. If that's wrong, the fix is to either
+  amend CLAUDE.md to note the onboarding exception explicitly, or drop
+  gold/cyan-deep from `ONBOARDING_FOUND_CARDS`/`ONBOARDING_ORBIT_CHIPS`
+  and their CSS in `nomi.css` back to the three-color rule.
+
+2026-08-21 — Deduplicated the onboarding reveal-chain closures in
+  `app._index.tsx` (`revealCheck`, `revealDay`, `revealFound` — each was a
+  copy-pasted "set n, wait, recurse until length, then run onDone" state
+  machine) into one shared `revealSequence(setN, length, stepMs, onDone)`
+  helper. Same control flow, same timing, verified with typecheck/build/
+  test/lint (no test exercises the onboarding animation directly, so this
+  is a mechanical, behavior-preserving extraction, not something rerun
+  against a golden output).
+
 2026-08-17 — Order confirmation and refund confirmation cannot be Nomi's
   own automatic send on a live store, on any plan: Shopify has no setting
   or API to globally disable its native order-confirmation email (no
