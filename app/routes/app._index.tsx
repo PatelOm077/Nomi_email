@@ -18,6 +18,9 @@ import { generateRefundConfirmationEmail } from "../email-engine/generate-refund
 import { generateNewsletterEmail } from "../email-engine/generate-newsletter-email";
 import { generateLifecycleEmail } from "../email-engine/generate-lifecycle-email";
 import { EMAIL_GENERATION_PAUSED } from "../email-engine/generation-status";
+import { renderLifecycleTemplateHtml } from "../email-engine/templates/lifecycle-template";
+import { LIFECYCLE_TEMPLATE_COPY } from "../email-engine/templates/lifecycle-template-copy";
+import type { LifecycleTemplateCustomization } from "../email-engine/templates/types";
 import type {
   AbandonedCartRecovery,
   EmailLanguage,
@@ -519,6 +522,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         where: { shop: session.shop, status: "pending" },
       }),
     },
+    lifecycleTemplateChoices: Object.fromEntries(
+      (await db.lifecycleTemplateChoice.findMany({ where: { shop: session.shop } })).map(
+        (row) => [
+          row.slotId,
+          {
+            mode: row.mode as "ai" | "template",
+            logoUrl: row.logoUrl,
+            primaryColor: row.primaryColor,
+            buttonText: row.buttonText,
+          },
+        ],
+      ),
+    ) as Partial<Record<LifecycleEmailId, LifecycleTemplateCustomization & { mode: "ai" | "template" }>>,
   };
 };
 
@@ -666,7 +682,15 @@ type DashboardActionRequest =
   | { kind: "set-sending"; enabled: boolean }
   | { kind: "set-receipt-sending"; enabled: boolean }
   | { kind: "set-language"; language: EmailLanguage }
-  | { kind: "set-tone"; tone: EmailTone };
+  | { kind: "set-tone"; tone: EmailTone }
+  | {
+      kind: "set-lifecycle-template";
+      slotId: LifecycleEmailId;
+      mode: "ai" | "template";
+      logoUrl: string | null;
+      primaryColor: string | null;
+      buttonText: string | null;
+    };
 
 // The dashboard reloads its loader data (and re-fires generation) on every
 // page load, so identical order/cart/etc. data would otherwise re-call
@@ -729,6 +753,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         where: { shop: session.shop },
         create: { shop: session.shop, tone: parsed.tone },
         update: { tone: parsed.tone },
+      });
+      return { deliveryUpdated: true };
+    }
+    if (parsed.kind === "set-lifecycle-template") {
+      if (!(parsed.slotId in LIFECYCLE_TEMPLATE_COPY)) {
+        return { error: "Unknown lifecycle email." };
+      }
+      if (parsed.mode !== "ai" && parsed.mode !== "template") {
+        return { error: "Unknown template mode." };
+      }
+      await db.lifecycleTemplateChoice.upsert({
+        where: { shop_slotId: { shop: session.shop, slotId: parsed.slotId } },
+        create: {
+          shop: session.shop,
+          slotId: parsed.slotId,
+          mode: parsed.mode,
+          logoUrl: parsed.logoUrl,
+          primaryColor: parsed.primaryColor,
+          buttonText: parsed.buttonText,
+        },
+        update: {
+          mode: parsed.mode,
+          logoUrl: parsed.logoUrl,
+          primaryColor: parsed.primaryColor,
+          buttonText: parsed.buttonText,
+        },
       });
       return { deliveryUpdated: true };
     }
@@ -895,8 +945,17 @@ function RuleRemovedIcon() {
 }
 
 export default function Index() {
-  const { shopName, products, order, cart, shippingUpdate, reviewRequest, refund, delivery } =
-    useLoaderData<typeof loader>();
+  const {
+    shopName,
+    products,
+    order,
+    cart,
+    shippingUpdate,
+    reviewRequest,
+    refund,
+    delivery,
+    lifecycleTemplateChoices,
+  } = useLoaderData<typeof loader>();
   const [campaign] = useState("");
   const [language, setLanguage] = useState<EmailLanguage>(
     resolveDashboardLanguage(delivery.language),
@@ -914,8 +973,31 @@ export default function Index() {
     Partial<Record<LifecycleEmailId, string>>
   >({});
   const [requestedLifecycleIds, setRequestedLifecycleIds] = useState<LifecycleEmailId[]>([]);
+  // A merchant's choice of real template vs. AI for each lifecycle slot,
+  // plus its small set of editable values. Seeded from the persisted rows;
+  // edits update local state immediately (the settings form and preview
+  // don't wait on the round trip) and are saved via templateFetcher.
+  const [templateChoices, setTemplateChoices] = useState<
+    Partial<Record<LifecycleEmailId, { mode: "ai" | "template" } & LifecycleTemplateCustomization>>
+  >(lifecycleTemplateChoices);
   const deliveryFetcher = useFetcher<typeof action>();
   const lifecycleFetcher = useFetcher<typeof action>();
+  const templateFetcher = useFetcher<typeof action>();
+
+  const getTemplateChoice = (id: LifecycleEmailId) =>
+    templateChoices[id] ?? { mode: "ai" as const, logoUrl: null, primaryColor: null, buttonText: null };
+
+  const updateTemplateChoice = (
+    id: LifecycleEmailId,
+    patch: Partial<{ mode: "ai" | "template" } & LifecycleTemplateCustomization>,
+  ) => {
+    const next = { ...getTemplateChoice(id), ...patch };
+    setTemplateChoices((current) => ({ ...current, [id]: next }));
+    templateFetcher.submit(
+      { payload: JSON.stringify({ kind: "set-lifecycle-template", slotId: id, ...next }) },
+      { method: "POST" },
+    );
+  };
 
   const onboardingStorageKey = `nomi:onboarding:${shopName}:${ONBOARDING_VERSION}`;
 
@@ -1380,14 +1462,29 @@ export default function Index() {
     { id: "winback-2", flowId: "winback", name: "2nd Winback Email", subject: "Something new for your next visit", previewText: "A fresh product edit", timing: "14 day(s) from previous" },
     { id: "winback-3", flowId: "winback", name: "3rd Winback Email", subject: "The door is open", previewText: "A final note from the store", timing: "30 day(s) from previous" },
   ];
-  const referenceTemplates: ReferenceFlowTemplate[] = referenceTemplateDefinitions.map((template) => ({
-    ...template,
-    generatedHtml: generatedLifecycleEmails[template.id] ?? null,
-    isGenerating:
-      lifecycleFetcher.state !== "idle" && requestedLifecycleIds.includes(template.id),
-    error: lifecycleError,
-    onGenerate: () => generateLifecycleEmails([template.id]),
-  }));
+  const referenceTemplates: ReferenceFlowTemplate[] = referenceTemplateDefinitions.map((template) => {
+    const choice = getTemplateChoice(template.id);
+    if (choice.mode === "template") {
+      // Real templates render instantly, client-side, with no AI call —
+      // renderLifecycleTemplateHtml is a pure function of the same
+      // LifecycleEmail data the AI path already assembles.
+      return {
+        ...template,
+        generatedHtml: renderLifecycleTemplateHtml(lifecycleInputs[template.id], choice),
+        isGenerating: false,
+        error: null,
+        onGenerate: () => {},
+      };
+    }
+    return {
+      ...template,
+      generatedHtml: generatedLifecycleEmails[template.id] ?? null,
+      isGenerating:
+        lifecycleFetcher.state !== "idle" && requestedLifecycleIds.includes(template.id),
+      error: lifecycleError,
+      onGenerate: () => generateLifecycleEmails([template.id]),
+    };
+  });
 
   const referenceFlows = [
     {
@@ -1433,6 +1530,7 @@ export default function Index() {
     referenceFlows.find(({ id }) => id === selectedTemplate.flowId) ?? referenceFlows[0];
   const generatedCount = referenceTemplates.filter(({ generatedHtml }) => Boolean(generatedHtml)).length;
   const isGeneratingAny = lifecycleFetcher.state !== "idle";
+  const selectedTemplateChoice = getTemplateChoice(selectedTemplateId);
 
   const startTrial = () => {
     setTrialStarted(true);
@@ -1665,15 +1763,72 @@ export default function Index() {
                 <span>{selectedTemplate.name} — preview</span>
                 <h2 className="nomi-visually-hidden" id="nomi-flow-proof-title">{selectedTemplate.subject}</h2>
               </div>
-              <button
-                className="nomi-flow-proof-action"
-                type="button"
-                disabled={EMAIL_GENERATION_PAUSED || selectedTemplate.isGenerating || isGeneratingAny}
-                onClick={selectedTemplate.onGenerate}
-              >
-                {EMAIL_GENERATION_PAUSED ? "Paused" : selectedTemplate.isGenerating ? "Writing…" : selectedTemplate.generatedHtml ? "Edit⌄" : "Generate"}
-              </button>
+              <div className="nomi-flow-proof-topline-actions">
+                <div className="nomi-flow-mode-toggle" role="group" aria-label="Email source">
+                  <button
+                    type="button"
+                    className={selectedTemplateChoice.mode === "ai" ? "is-active" : undefined}
+                    onClick={() => updateTemplateChoice(selectedTemplateId, { mode: "ai" })}
+                  >
+                    AI
+                  </button>
+                  <button
+                    type="button"
+                    className={selectedTemplateChoice.mode === "template" ? "is-active" : undefined}
+                    onClick={() => updateTemplateChoice(selectedTemplateId, { mode: "template" })}
+                  >
+                    Template
+                  </button>
+                </div>
+                {selectedTemplateChoice.mode === "ai" ? (
+                  <button
+                    className="nomi-flow-proof-action"
+                    type="button"
+                    disabled={EMAIL_GENERATION_PAUSED || selectedTemplate.isGenerating || isGeneratingAny}
+                    onClick={selectedTemplate.onGenerate}
+                  >
+                    {EMAIL_GENERATION_PAUSED ? "Paused" : selectedTemplate.isGenerating ? "Writing…" : selectedTemplate.generatedHtml ? "Edit⌄" : "Generate"}
+                  </button>
+                ) : null}
+              </div>
             </div>
+
+            {selectedTemplateChoice.mode === "template" ? (
+              <div className="nomi-flow-template-settings">
+                <label>
+                  <span>Logo URL</span>
+                  <input
+                    type="text"
+                    placeholder="https://…"
+                    value={selectedTemplateChoice.logoUrl ?? ""}
+                    onChange={(event) =>
+                      updateTemplateChoice(selectedTemplateId, { logoUrl: event.target.value || null })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Primary color</span>
+                  <input
+                    type="color"
+                    value={selectedTemplateChoice.primaryColor ?? "#57534b"}
+                    onChange={(event) =>
+                      updateTemplateChoice(selectedTemplateId, { primaryColor: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Button text</span>
+                  <input
+                    type="text"
+                    placeholder={LIFECYCLE_TEMPLATE_COPY[selectedTemplateId].ctaLabel}
+                    value={selectedTemplateChoice.buttonText ?? ""}
+                    onChange={(event) =>
+                      updateTemplateChoice(selectedTemplateId, { buttonText: event.target.value || null })
+                    }
+                  />
+                </label>
+              </div>
+            ) : null}
 
             <div className="nomi-flow-inbox-meta">
               <div><strong>From</strong><span>{delivery.fromAddress ?? `${shopName} via Nomi`}</span></div>
