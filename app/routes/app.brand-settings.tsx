@@ -68,7 +68,7 @@ function Field({ label, value }: { label: string; value: string | null }) {
 }
 
 export default function BrandSettingsPage() {
-  const [active, setActive] = useState<SectionId>("profile");
+  const [active, setActive] = useState<SectionId | null>("profile");
   const [hovered, setHovered] = useState<SectionId | null>(null);
 
   return (
@@ -96,7 +96,9 @@ export default function BrandSettingsPage() {
                     (isActive ? " nomi-brand-rail-item-active" : "") +
                     (isHovered && !isActive ? " nomi-brand-rail-item-hover" : "")
                   }
-                  onClick={() => setActive(section.id)}
+                  onClick={() =>
+                    setActive((current) => (current === section.id ? null : section.id))
+                  }
                   onMouseEnter={() => setHovered(section.id)}
                   onMouseLeave={() => setHovered(null)}
                 >
