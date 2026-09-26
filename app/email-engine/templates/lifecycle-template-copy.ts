@@ -1,15 +1,7 @@
 import type { LifecycleEmailId } from "../types";
 
-// Real, fixed copy for every lifecycle slot — the non-AI counterpart to
-// lifecycle-email-prompt.ts. No copy here names a specific fact (order
-// number, discount, tracking) since none of that can be relied on to exist;
-// dynamic facts (products, order details, real URLs) are inserted by
-// lifecycle-template.ts around this copy, never inside it. Sequence tone
-// follows the same rules lifecycle-email-prompt.ts documents for the AI
-// path, so template and AI-generated emails read like the same product:
-// welcome progresses intro -> story -> favorites; cart goes gentle ->
-// practical -> quiet, never inventing urgency or a discount; winback never
-// guilt-trips or invents history.
+// Display copy for the legacy look chooser. This module does not render or
+// generate email HTML; approved lifecycle documents come from Brand Studio.
 export interface LifecycleTemplateCopy {
   headline: string;
   body: string[];

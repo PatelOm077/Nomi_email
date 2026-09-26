@@ -1,6 +1,7 @@
 import { generateEmailHtml } from "./generate-email";
 import { REVIEW_REQUEST_SKELETON_PROMPT } from "./review-request-prompt";
 import type { ReviewRequest } from "./types";
+import { approvedBrandPrompt } from "./brand-identity-prompt";
 
 function buildReviewMessage(request: ReviewRequest): string {
   const lineItems = request.lineItems
@@ -26,7 +27,8 @@ Line items delivered:
 ${lineItems}
 Review URL: ${reviewUrl}
 
-Invent a tasteful, editorial brand skin for "${request.shopName}" as described above, since no real brand assets are connected for this shop yet. Return only the finished HTML document.`;
+${approvedBrandPrompt(request.brandIdentity, request.shopName)}
+Return only the finished HTML document.`;
 }
 
 export async function generateReviewRequestEmail(

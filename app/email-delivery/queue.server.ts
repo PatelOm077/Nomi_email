@@ -8,12 +8,10 @@ type EnqueueInput = {
   payload: Record<string, unknown>;
 };
 
-// Order confirmation and refund confirmation always duplicate Shopify's
-// own native customer email for the same event — there's no store setting
-// or API that suppresses the native side (see DECISIONS.md, 2026-08-17).
-// These two topics need the narrower sendReceiptEmails opt-in on top of
-// the main sendingEnabled switch; every other topic only needs the latter.
-const DUPLICATE_RISK_TOPICS = new Set(["ORDERS_CREATE", "REFUNDS_CREATE"]);
+// Only the five approved lifecycle flows belong to Nomi. The delivery
+// worker currently receives Shopify events for Abandoned Cart and the
+// delivered-order step of How Was It?.
+const SENDABLE_TOPICS = new Set(["CHECKOUTS_UPDATE", "FULFILLMENTS_UPDATE"]);
 
 export async function enqueueEmailJob({
   webhookId,
@@ -21,21 +19,25 @@ export async function enqueueEmailJob({
   topic,
   payload,
 }: EnqueueInput): Promise<"queued" | "duplicate" | "disabled" | "ignored"> {
+  // orders/create is only a stop signal for Abandoned Cart. It never creates
+  // a customer-email job of its own. Process it even if sending was disabled
+  // after the recovery job was queued, so a completed checkout can never be
+  // revived by a later settings change.
+  if (topic === "ORDERS_CREATE") {
+    if (typeof payload.checkout_token === "string") {
+      await db.emailJob.updateMany({
+        where: {
+          webhookId: `checkout:${shop}:${payload.checkout_token}`,
+          status: "pending",
+        },
+        data: { status: "skipped", lastError: "Checkout completed." },
+      });
+    }
+    return "ignored";
+  }
+
   const settings = await db.shopSettings.findUnique({ where: { shop } });
   if (!settings?.sendingEnabled) return "disabled";
-
-  // Runs regardless of sendReceiptEmails below: a completed order should
-  // cancel its pending cart-recovery job whether or not Nomi is also
-  // sending its own (duplicate-risk) order-confirmation email for it.
-  if (topic === "ORDERS_CREATE" && typeof payload.checkout_token === "string") {
-    await db.emailJob.updateMany({
-      where: {
-        webhookId: `checkout:${shop}:${payload.checkout_token}`,
-        status: "pending",
-      },
-      data: { status: "skipped", lastError: "Checkout completed." },
-    });
-  }
 
   if (topic === "CHECKOUTS_UPDATE") {
     const token = payload.token;
@@ -74,9 +76,7 @@ export async function enqueueEmailJob({
     return "queued";
   }
 
-  if (DUPLICATE_RISK_TOPICS.has(topic) && !settings.sendReceiptEmails) {
-    return "disabled";
-  }
+  if (!SENDABLE_TOPICS.has(topic)) return "ignored";
 
   try {
     await db.emailJob.create({

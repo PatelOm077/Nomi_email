@@ -12,41 +12,64 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
 `claude-sonnet-5`.
 
 ## Folder layout
-- `app/routes/app._index.tsx` — the dashboard. `loader` fetches shop,
-  products, and the most recent order; `action` maps that order into the
-  engine's shape and calls it.
-- `app/routes/app.tsx` — embedded app shell (nav, auth).
+- `app/routes/app._index.tsx` — the lifecycle dashboard. It reads the active
+  catalogue and approved Brand Studio output for the five supported flows.
+- `app/routes/app.tsx` — embedded app shell (nav, auth). Also the theme
+  setup gate: every `/app/*` page redirects to `/app/setup` until the
+  "Nomi Script" app embed is on in the live theme
+  (`ShopSettings.appEmbedVerifiedAt`). Detection lives in
+  `app/dashboard/app-embed.server.ts` (reads the MAIN theme's
+  `config/settings_data.json`, `read_themes` only); it fails open on a
+  Shopify read error so merchants aren't locked out.
+- `app/routes/app.setup.tsx` — the first-install "Enable Nomi on your
+  theme" screen. Deep-links into the theme editor with
+  `activateAppId=<api key>/nomi-script`. Once the embed reads Active it hands
+  off to Brand Studio onboarding (`/app/brand-studio`), not the dashboard.
+- `extensions/nomi-theme/` — theme app extension; `blocks/nomi-script.liquid`
+  is the app embed. Its filename is the detection key and deep-link handle —
+  don't rename it. With it present, `shopify app dev` needs the storefront
+  password (`SHOPIFY_FLAG_STORE_PASSWORD`) to run non-interactively.
 - `app/routes/_index/`, `app/routes/auth.login/` — the public install/login
   flow, required by SingleMerchant distribution. Not the embedded admin
   path, but don't delete them (see Don't touch).
 - `app/email-engine/` — the generation engine. **No Shopify imports allowed
   in this folder** — that boundary is the whole point of it being
   platform-independent (Shopify today, WooCommerce/Wix/BigCommerce later).
-  - `types.ts` — neutral order/cart/line-item shapes
+  - `types.ts` — neutral lifecycle/cart/line-item shapes
   - `design-system-prompt.ts` — `SHARED_DESIGN_SYSTEM_PROMPT`: the rules
     every skeleton shares (output contract, table-based HTML, typography,
     brand-skin invention, voice). Sent as its own cache_control block, so
     it's written to cache once and read by every email type, not just
     repeats of the same one.
-  - `order-confirmation-prompt.ts`, `abandoned-cart-prompt.ts`,
-    `shipping-update-prompt.ts`, `review-request-prompt.ts` — the
-    structural skeleton specific to each email type, each its own
-    cache_control block appended after the shared one. Adding a new email
-    type means adding one of these, not touching the shared prompt.
+  - `abandoned-cart-prompt.ts` and `review-request-prompt.ts` — runtime
+    lifecycle skeletons, each appended as its own cache-control block.
   - `anthropic-client.ts` — the lazy Anthropic client singleton
   - `generate-email.ts` — shared call-Claude-and-return-HTML logic (system
     blocks, stop_reason handling, code-fence stripping) used by every
     `generate-*-email.ts` file
-  - `generate-order-confirmation-email.ts`, `generate-abandoned-cart-email.ts`,
-    `generate-shipping-update-email.ts`, `generate-review-request-email.ts`,
-    `generate-refund-confirmation-email.ts`, `generate-newsletter-email.ts`
-    — one per email type; each just builds its user message and calls
-    `generateEmailHtml()` with its own skeleton prompt
+  - `generate-abandoned-cart-email.ts`, `generate-review-request-email.ts`,
+    and `generate-newsletter-email.ts` — supported runtime generators.
+  - `background-removal.ts` — optional, `REMOVE_BG_API_KEY`-gated product
+    photo cutout for campaigns. Platform-neutral (no Shopify import): takes
+    a real image URL, returns raw cutout bytes or `null`. Hosting those
+    bytes at a public URL is Shopify-shape work, so that half
+    (`uploadImageBufferToShopify`) lives in
+    `app/dashboard/campaign-catalog.server.ts` instead, called from
+    `app.campaigns.tsx`'s action. `ProductImageCutout` (Prisma) caches a hit
+    per shop+product+source-photo so the same product is never billed to
+    the paid removal API twice.
+  - `campaign-image-plan.ts` + `image-generation.ts` — optional AI
+    photography for campaigns. Claude plans 0–3 text-free photos (seeing
+    real product photos and the approved brand), OpenAI's Image API
+    (`OPENAI_IMAGE_MODEL`, default `gpt-image-2.5-sunburst`) renders them,
+    and `app.campaigns.tsx` hosts them via `uploadImageBufferToShopify`
+    (`waitForReadyMs`, since there is no fallback photo). Off when
+    `OPENAI_API_KEY` is unset or `NOMI_CAMPAIGN_IMAGES=off`.
 - `app/email-delivery/` — Resend provider adapter, durable webhook queue,
   and worker. Webhook routes only enqueue; never call Claude or Resend in a
   Shopify webhook request.
-- `app/routes/webhooks.email-events.tsx` — authenticated Shopify event
-  ingress for transactional and delayed cart-recovery jobs.
+- `app/routes/webhooks.email-events.tsx` — authenticated Shopify lifecycle
+  ingress. `orders/create` is cancellation-only; it never sends an email.
 - `app/routes/tasks.email-jobs.tsx` — secret-protected worker endpoint;
   production must POST to it on a schedule.
 - `app/styles/nomi.css` — Nomi's own dashboard UI brand. Not the merchant
@@ -68,30 +91,20 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
 - `SHARED_DESIGN_SYSTEM_PROMPT` is marked `cache_control` on purpose — keep
   it long enough to clear Sonnet 5's ~1024-token cache-eligible minimum on
   its own. Shrinking it carelessly silently kills caching, not an error.
-- Adding a new email type (newsletter is the only one left): add a
-  `<type>-prompt.ts` skeleton, a `generate-<type>-email.ts` that calls
-  `generateEmailHtml()` from `generate-email.ts`, and a fetcher + card
-  dispatcher in the route — follow `abandoned-cart-*`, `shipping-update-*`,
-  or `review-request-*` as the template, not `order-confirmation-*` (that
-  one predates the shared-prompt split). Newsletter is the odd one out:
-  its input is a free-text prompt, not a Shopify record, so it won't reuse
-  the `toEngine*` mapping pattern the other four share.
-- A card's data doesn't have to come from its own GraphQL query — the
-  review-request card reuses the same `shippedOrders` fetch as shipping
-  update (a review request is just that same order once its fulfillment
-  reads `delivered`), rather than firing a second near-identical query.
-  Check whether an existing fetch already answers the new card's question
-  before adding one.
+- Do not add order-confirmation, shipping-notification, or refund-confirmation
+  generators. Those notifications remain Shopify-owned. Nomi's five flows are
+  Welcome, Still Interested?, Abandoned Cart, How Was It?, and Welcome Back.
+- Before adding a GraphQL query, check whether existing lifecycle/dashboard
+  data already answers the question.
 - A missing field (customer name, etc.) is `null`, never a placeholder
   string like "there" — every prompt has real fallback copy for the
   no-name case. Don't hand the model a fake value and let it treat it as
   real data.
 - Don't let a skeleton invent things the merchant hasn't actually offered
-  — a hallucinated discount code, tracking number, tracking URL, or review
-  URL is a broken promise, not a stylistic slip. Each skeleton's prompt
-  says so explicitly, and the shipping-update and review-request prompts
-  both conditionally omit their CTA button when no real URL was given,
-  rather than faking one with `href="#"`. `Product.onlineStoreUrl` is
+  — a hallucinated discount code, product URL, or review URL is a broken
+  promise, not a stylistic slip. The review-request prompt omits its CTA when
+  no real URL was given rather than faking one with `href="#"`.
+  `Product.onlineStoreUrl` is
   `null` whenever a product isn't published to the Online Store channel —
   expect that to be common on a fresh dev store, not a bug.
 - When checking a new GraphQL field's required scope, don't take a
@@ -109,6 +122,13 @@ Serif 4 for headings/wordmark, system sans for UI chrome. Voice: plain
 sentences, no exclamation marks, name the action, state numbers plainly.
 This governs Nomi's own UI only — merchant emails get an AI-invented
 brand skin per shop, never these colors.
+
+## Vocabulary
+- "Wordpress era" (merchant's term) means a UI element reads as shit and
+  outdated — flat grey fills, boxy default-browser chrome, no visual
+  polish. Not a request for an actual WordPress-style redesign; treat it as
+  "this needs real design attention," same bar as the rest of this doc's
+  Brand section.
 
 ## Don't touch
 - `.env` — holds `ANTHROPIC_API_KEY` and Shopify secrets. Gitignored;
@@ -129,11 +149,23 @@ brand skin per shop, never these colors.
 - `npm run dev` — starts `shopify app dev` (tunnel, OAuth, HMR). Scope
   changes auto-grant silently on your own dev store; no browser prompt to
   click through in that case.
+- For live Chrome inspection and interaction, use the project-configured
+  `chrome-devtools` MCP server. It connects to the existing Chrome profile via
+  `--autoConnect`, which can inspect and interact with Nomi's cross-origin
+  Shopify iframe. Chrome 144+ must have remote debugging enabled once at
+  `chrome://inspect/#remote-debugging`; restart the agent session after changing
+  that setting. Use the Shopify session signed in as `ombarvaliya7@gmail.com`.
+  Do not disable Chrome site isolation or web security. The page-level
+  Claude-in-Chrome `read_page`/coordinate tools are not the right surface for
+  this out-of-process iframe.
 - `npm run typecheck && npm run build` — run both after touching `app/`.
   One pre-existing gap is expected, not a regression: `s-app-nav` isn't in
   `@shopify/polaris-types` yet (`app/routes/app.tsx`).
 - Email sending needs `RESEND_API_KEY`, a verified `NOMI_FROM_EMAIL`,
   optional `NOMI_FROM_NAME`, and `EMAIL_JOB_SECRET`. Never generate or send
   inside the webhook route; run the worker endpoint separately.
+- Campaign product-photo cutouts are optional: set `REMOVE_BG_API_KEY` (a
+  remove.bg key) to turn them on. Unset, campaigns generate exactly as
+  before — no cutout offered, no extra call, no cost.
 
 See SPEC.md for features and DECISIONS.md for why choices were made.

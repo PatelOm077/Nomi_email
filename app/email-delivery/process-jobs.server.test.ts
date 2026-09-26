@@ -9,29 +9,20 @@ const mocks = vi.hoisted(() => ({
       update: vi.fn(),
     },
     shopSettings: { findUnique: vi.fn() },
+    brandStudioProfile: { findUnique: vi.fn() },
   },
   admin: vi.fn(),
   graphql: vi.fn(),
-  generateOrderConfirmationEmail: vi.fn(),
-  generateShippingUpdateEmail: vi.fn(),
-  generateRefundConfirmationEmail: vi.fn(),
   generateReviewRequestEmail: vi.fn(),
   generateAbandonedCartEmail: vi.fn(),
   sendEmail: vi.fn(),
+  isSuppressed: vi.fn(async () => false),
+  footer: vi.fn((): { complete: boolean; line: string | null } => ({ complete: true, line: "Paper Boat · 1 Harbour St, Leith, UK" })),
 }));
 
 vi.mock("../db.server", () => ({ default: mocks.db }));
 vi.mock("../shopify.server", () => ({
   unauthenticated: { admin: mocks.admin },
-}));
-vi.mock("../email-engine/generate-order-confirmation-email", () => ({
-  generateOrderConfirmationEmail: mocks.generateOrderConfirmationEmail,
-}));
-vi.mock("../email-engine/generate-shipping-update-email", () => ({
-  generateShippingUpdateEmail: mocks.generateShippingUpdateEmail,
-}));
-vi.mock("../email-engine/generate-refund-confirmation-email", () => ({
-  generateRefundConfirmationEmail: mocks.generateRefundConfirmationEmail,
 }));
 vi.mock("../email-engine/generate-review-request-email", () => ({
   generateReviewRequestEmail: mocks.generateReviewRequestEmail,
@@ -40,17 +31,111 @@ vi.mock("../email-engine/generate-abandoned-cart-email", () => ({
   generateAbandonedCartEmail: mocks.generateAbandonedCartEmail,
 }));
 vi.mock("./provider.server", () => ({ sendEmail: mocks.sendEmail }));
+vi.mock("./unsubscribe.server", () => ({
+  isSuppressed: mocks.isSuppressed,
+  unsubscribeUrl: ({ email }: { email: string }) => `https://app.test/unsubscribe?t=${email}`,
+  listUnsubscribeHeaders: (url: string) => ({ "List-Unsubscribe": `<${url}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" }),
+}));
+vi.mock("../dashboard/sender-footer.server", () => ({
+  loadShopFooterAddress: async () => null,
+  resolveSenderFooter: () => mocks.footer(),
+}));
 
 const shop = "paper-boat.myshopify.com";
 const fixedNow = new Date("2026-08-19T12:00:00.000Z");
+const approvedSystem = {
+  directionId: "editorial",
+  name: "Paper Boat Editorial",
+  audience: "People choosing considered objects for a calm home.",
+  feeling: "Warm, tactile, quiet, and confidently useful.",
+  palette: {
+    paper: "#f5f0e7",
+    ink: "#211f1b",
+    primary: "#7a4837",
+    accent: "#d6ad79",
+  },
+  typography: { display: "Lora", body: "Arial", fallback: "Georgia, serif" },
+  voice: {
+    principles: ["Write plainly", "Name useful details", "Keep the pace calm"],
+    preferredWords: ["considered"],
+    avoidWords: ["hurry"],
+  },
+  layoutRules: ["Use generous space", "Let products lead", "Keep one primary action"],
+  imageTreatment: "Show real product photography without cropping.",
+  buttonTreatment: "Solid warm brown with clear light text.",
+  signatureMotif: "Objects for slower rooms",
+};
+// creativeDirectionsSchema requires exactly 3 stored directions; only the
+// one matching approvedSystem.directionId needs to be realistic.
+const approvedDirections = [
+  {
+    id: "editorial",
+    name: "Paper Boat Editorial",
+    rationale: "Leads with typography and real product photography for a calm, considered home-goods brand.",
+    palette: ["#f5f0e7", "#211f1b", "#7a4837", "#d6ad79"],
+    typography: {
+      display: "Lora",
+      body: "Arial",
+      character: "Warm serif headlines over a plain, quiet utility body.",
+    },
+    imageTreatment: "Show real product photography without cropping.",
+    voice: "Warm, tactile, quiet, and confidently useful.",
+    layoutStyle: "editorial" as const,
+    motif: "Objects for slower rooms",
+    sampleHeadline: "Make room for something useful",
+    sampleCta: "Continue",
+  },
+  { id: "product-led-alt", name: "Alt A", rationale: "A secondary direction offered but not chosen.", palette: ["#f5f0e7", "#211f1b", "#7a4837", "#d6ad79"], typography: { display: "Lora", body: "Arial", character: "Placeholder alternate direction." }, imageTreatment: "Placeholder.", voice: "Placeholder.", layoutStyle: "product-led" as const, motif: "Alt motif", sampleHeadline: "Alt headline", sampleCta: "Shop" },
+  { id: "graphic-alt", name: "Alt B", rationale: "A secondary direction offered but not chosen.", palette: ["#f5f0e7", "#211f1b", "#7a4837", "#d6ad79"], typography: { display: "Lora", body: "Arial", character: "Placeholder alternate direction." }, imageTreatment: "Placeholder.", voice: "Placeholder.", layoutStyle: "graphic" as const, motif: "Alt motif", sampleHeadline: "Alt headline", sampleCta: "Shop" },
+];
+const approvedEvidence = {
+  shopName: "Paper Boat Goods",
+  storefrontUrl: "https://paper-boat.example.com",
+  storefrontText: "Considered objects for slower rooms and daily rituals.",
+  products: [],
+  assets: { logoUrl: null, observedColors: [], fontHints: [] },
+};
+const lifecycleIds = [
+  "welcome-1",
+  "welcome-2",
+  "welcome-3",
+  "interest-1",
+  "interest-2",
+  "cart-1",
+  "cart-2",
+  "cart-3",
+  "thank-you",
+  "review-request",
+  "winback-1",
+  "winback-2",
+  "winback-3",
+];
+const approvedRecipes = lifecycleIds.map((id, index) => ({
+  id,
+  subject: `A considered note ${index + 1}`,
+  preheader: `A useful second thought for this message number ${index + 1}.`,
+  eyebrow: "Paper Boat",
+  headline: `Make room for something useful ${index + 1}`,
+  body: "A specific and useful message written with enough detail to explain what comes next.",
+  ctaLabel: "Continue",
+  creativeBrief: `Create a distinct lifecycle composition ${index + 1} with a unique hierarchy, image role, pacing, CTA relationship, and rendered silhouette.`,
+  productIds: [],
+}));
+const approvedRenderedEmails = Object.fromEntries(
+  lifecycleIds.map((id) => [
+    id,
+    `<!doctype html><html><body><h1>${id}</h1><p>${"Approved Brand Studio email. ".repeat(5)}</p></body></html>`,
+  ]),
+);
 
 const baseJob = {
   id: "job-1",
   webhookId: "webhook-1",
   shop,
-  topic: "ORDERS_CREATE",
+  topic: "FULFILLMENTS_UPDATE",
   payload: JSON.stringify({
-    admin_graphql_api_id: "gid://shopify/Order/1042",
+    order_id: 1042,
+    shipment_status: "delivered",
     customer_locale: "es-MX",
   }),
   status: "pending",
@@ -71,9 +156,6 @@ const orderResponse = {
       name: "#1042",
       email: "mina@example.com",
       customer: { firstName: "Mina" },
-      currentTotalPriceSet: {
-        shopMoney: { amount: "7500", currencyCode: "INR" },
-      },
       lineItems: {
         edges: [
           {
@@ -84,49 +166,41 @@ const orderResponse = {
               product: {
                 onlineStoreUrl: "https://shop.example.com/products/linen-throw",
               },
-              originalTotalSet: {
-                shopMoney: { amount: "6400", currencyCode: "INR" },
-              },
             },
           },
         ],
       },
-      fulfillments: [
+    },
+  },
+};
+
+const checkoutResponse = {
+  data: {
+    shop: { name: "Paper Boat Goods" },
+    abandonedCheckouts: {
+      edges: [
         {
-          id: "gid://shopify/Fulfillment/501",
-          displayStatus: "OUT_FOR_DELIVERY",
-          estimatedDeliveryAt: "August 20",
-          trackingInfo: [
-            {
-              number: "TRACK-501",
-              url: "https://carrier.example.com/TRACK-501",
-              company: "Blue Dart",
+          node: {
+            abandonedCheckoutUrl:
+              "https://shop.example.com/checkouts/recover/checkout-token",
+            customer: null,
+            totalPriceSet: {
+              shopMoney: { amount: "7500", currencyCode: "INR" },
             },
-          ],
-        },
-      ],
-      refunds: [
-        {
-          id: "gid://shopify/Refund/701",
-          note: "Item arrived damaged",
-          totalRefundedSet: {
-            shopMoney: { amount: "3200", currencyCode: "INR" },
-          },
-          refundLineItems: {
-            edges: [
-              {
-                node: {
-                  quantity: 1,
-                  subtotalSet: {
-                    shopMoney: { amount: "3200", currencyCode: "INR" },
-                  },
-                  lineItem: {
-                    title: "Linen Throw",
-                    image: { url: "https://cdn.example.com/linen.jpg" },
+            lineItems: {
+              edges: [
+                {
+                  node: {
+                    title: null,
+                    quantity: 2,
+                    image: null,
+                    originalTotalPriceSet: {
+                      shopMoney: { amount: "6400", currencyCode: "INR" },
+                    },
                   },
                 },
-              },
-            ],
+              ],
+            },
           },
         },
       ],
@@ -135,9 +209,7 @@ const orderResponse = {
 };
 
 function setGraphqlResponse(value: unknown) {
-  mocks.graphql.mockResolvedValue({
-    json: vi.fn().mockResolvedValue(value),
-  });
+  mocks.graphql.mockResolvedValue({ json: vi.fn().mockResolvedValue(value) });
 }
 
 describe("processPendingEmailJobs", () => {
@@ -149,11 +221,9 @@ describe("processPendingEmailJobs", () => {
       mocks.db.emailJob.updateMany,
       mocks.db.emailJob.update,
       mocks.db.shopSettings.findUnique,
+      mocks.db.brandStudioProfile.findUnique,
       mocks.admin,
       mocks.graphql,
-      mocks.generateOrderConfirmationEmail,
-      mocks.generateShippingUpdateEmail,
-      mocks.generateRefundConfirmationEmail,
       mocks.generateReviewRequestEmail,
       mocks.generateAbandonedCartEmail,
       mocks.sendEmail,
@@ -165,28 +235,17 @@ describe("processPendingEmailJobs", () => {
     mocks.db.emailJob.update.mockResolvedValue({});
     mocks.db.shopSettings.findUnique.mockResolvedValue({
       sendingEnabled: true,
-      sendReceiptEmails: true,
       language: "en",
       tone: "warm-plain",
     });
+    mocks.db.brandStudioProfile.findUnique.mockResolvedValue(null);
     mocks.admin.mockResolvedValue({ admin: { graphql: mocks.graphql } });
-    mocks.generateOrderConfirmationEmail.mockResolvedValue(
-      "<html>order</html>",
-    );
-    mocks.generateShippingUpdateEmail.mockResolvedValue(
-      "<html>shipping</html>",
-    );
-    mocks.generateRefundConfirmationEmail.mockResolvedValue(
-      "<html>refund</html>",
-    );
     mocks.generateReviewRequestEmail.mockResolvedValue("<html>review</html>");
     mocks.generateAbandonedCartEmail.mockResolvedValue("<html>cart</html>");
     mocks.sendEmail.mockResolvedValue("provider-message-1");
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  afterEach(() => vi.useRealTimers());
 
   it.each([
     [0, 1],
@@ -200,7 +259,6 @@ describe("processPendingEmailJobs", () => {
       retried: 0,
       failed: 0,
     });
-
     expect(mocks.db.emailJob.findMany).toHaveBeenCalledWith({
       where: { status: "pending", availableAt: { lte: fixedNow } },
       orderBy: { createdAt: "asc" },
@@ -218,239 +276,167 @@ describe("processPendingEmailJobs", () => {
       retried: 0,
       failed: 0,
     });
-
-    expect(mocks.db.shopSettings.findUnique).not.toHaveBeenCalled();
     expect(mocks.sendEmail).not.toHaveBeenCalled();
   });
 
-  it("re-checks sending settings after claiming and skips disabled work", async () => {
-    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
-    mocks.db.shopSettings.findUnique.mockResolvedValue({
-      sendingEnabled: false,
-      sendReceiptEmails: true,
-    });
-
-    await expect(processPendingEmailJobs()).resolves.toEqual({
-      sent: 0,
-      skipped: 1,
-      retried: 0,
-      failed: 0,
-    });
-
-    expect(mocks.db.emailJob.updateMany).toHaveBeenCalledWith({
-      where: { id: "job-1", status: "pending" },
-      data: { status: "processing", attempts: { increment: 1 } },
-    });
-    expect(mocks.db.emailJob.update).toHaveBeenCalledWith({
-      where: { id: "job-1" },
-      data: {
-        status: "skipped",
-        lastError: "Sending disabled for shop.",
-      },
-    });
-    expect(mocks.admin).not.toHaveBeenCalled();
-  });
-
-  it("re-checks the narrower receipt-email opt-in after claiming", async () => {
-    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
-    mocks.db.shopSettings.findUnique.mockResolvedValue({
-      sendingEnabled: true,
-      sendReceiptEmails: false,
-    });
-
-    await expect(processPendingEmailJobs()).resolves.toEqual({
-      sent: 0,
-      skipped: 1,
-      retried: 0,
-      failed: 0,
-    });
-
-    expect(mocks.db.emailJob.update).toHaveBeenCalledWith({
-      where: { id: "job-1" },
-      data: {
-        status: "skipped",
-        lastError: "Receipt-email sending not enabled for shop.",
-      },
-    });
-    expect(mocks.admin).not.toHaveBeenCalled();
-  });
-
-  it("generates and sends an order with a stable provider idempotency key", async () => {
-    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
-    setGraphqlResponse(orderResponse);
-
-    await expect(processPendingEmailJobs()).resolves.toEqual({
-      sent: 1,
-      skipped: 0,
-      retried: 0,
-      failed: 0,
-    });
-
-    expect(mocks.graphql).toHaveBeenCalledWith(expect.any(String), {
-      variables: { id: "gid://shopify/Order/1042" },
-    });
-    expect(mocks.generateOrderConfirmationEmail).toHaveBeenCalledWith({
-      shopName: "Paper Boat Goods",
-      language: "es",
-      tone: "warm-plain",
-      customerFirstName: "Mina",
-      orderNumber: "#1042",
-      total: expect.stringContaining("7"),
-      lineItems: [
-        {
-          title: "Linen Throw",
-          quantity: 2,
-          price: expect.stringContaining("6"),
-          imageUrl: "https://cdn.example.com/linen.jpg",
-        },
-      ],
-    });
-    expect(mocks.sendEmail).toHaveBeenCalledWith({
-      to: "mina@example.com",
-      subject: "Pedido confirmado — #1042",
-      html: "<html>order</html>",
-      idempotencyKey: "order:paper-boat.myshopify.com:gid://shopify/Order/1042",
-    });
-    expect(mocks.db.emailJob.update).toHaveBeenCalledWith({
-      where: { id: "job-1" },
-      data: {
-        status: "sent",
-        providerMessageId: "provider-message-1",
-        sentAt: fixedNow,
-        lastError: null,
-      },
-    });
-  });
-
-  it("maps the matching fulfillment and tracking facts", async () => {
+  it("skips legacy jobs whose email type is no longer supported", async () => {
     mocks.db.emailJob.findMany.mockResolvedValue([
-      {
-        ...baseJob,
-        topic: "FULFILLMENTS_CREATE",
-        payload: JSON.stringify({ order_id: 1042, id: 501 }),
-      },
+      { ...baseJob, topic: "ORDERS_CREATE" },
     ]);
+
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ skipped: 1 });
+    expect(mocks.db.emailJob.update).toHaveBeenCalledWith({
+      where: { id: "job-1" },
+      data: { status: "skipped", lastError: "Email type is no longer supported." },
+    });
+    expect(mocks.admin).not.toHaveBeenCalled();
+  });
+
+  it("re-checks sending settings after claiming", async () => {
+    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
+    mocks.db.shopSettings.findUnique.mockResolvedValue({ sendingEnabled: false });
+
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ skipped: 1 });
+    expect(mocks.db.emailJob.update).toHaveBeenCalledWith({
+      where: { id: "job-1" },
+      data: { status: "skipped", lastError: "Sending disabled for shop." },
+    });
+    expect(mocks.admin).not.toHaveBeenCalled();
+  });
+
+  it("passes the approved review recipe into live generation", async () => {
+    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
+    mocks.db.brandStudioProfile.findUnique.mockResolvedValue({
+      status: "complete",
+      evidence: JSON.stringify(approvedEvidence),
+      brandSystem: JSON.stringify(approvedSystem),
+      lifecycleRecipes: JSON.stringify(approvedRecipes),
+      renderedEmails: JSON.stringify(approvedRenderedEmails),
+      evidenceFingerprint: "evidence-v2",
+      snapshotEvidenceFingerprint: "evidence-v2",
+      generatedEvidenceFingerprint: "evidence-v2",
+      directions: JSON.stringify(approvedDirections),
+      selectedDirectionId: approvedSystem.directionId,
+    });
     setGraphqlResponse(orderResponse);
 
     await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
-
-    expect(mocks.generateShippingUpdateEmail).toHaveBeenCalledWith({
-      shopName: "Paper Boat Goods",
-      language: "en",
-      tone: "warm-plain",
-      customerFirstName: "Mina",
-      orderNumber: "#1042",
-      fulfillmentStatus: "out for delivery",
-      trackingNumber: "TRACK-501",
-      carrierName: "Blue Dart",
-      trackingUrl: "https://carrier.example.com/TRACK-501",
-      estimatedDelivery: "August 20",
-      lineItems: [
-        {
-          title: "Linen Throw",
-          quantity: 2,
-          imageUrl: "https://cdn.example.com/linen.jpg",
-        },
-      ],
-    });
-    expect(mocks.sendEmail).toHaveBeenCalledWith(
+    expect(mocks.generateReviewRequestEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        idempotencyKey:
-          "shipping:paper-boat.myshopify.com:gid://shopify/Fulfillment/501",
+        brandIdentity: expect.objectContaining({
+          system: approvedSystem,
+          referenceRecipe: expect.objectContaining({
+            headline: "Make room for something useful 10",
+          }),
+        }),
       }),
     );
+  });
+
+  it("fails closed when the approved Brand Studio profile is stale", async () => {
+    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
+    mocks.db.brandStudioProfile.findUnique.mockResolvedValue({
+      status: "complete",
+      evidenceFingerprint: "new-evidence",
+      snapshotEvidenceFingerprint: "new-evidence",
+      generatedEvidenceFingerprint: "old-evidence",
+    });
+
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ skipped: 1 });
+    expect(mocks.db.emailJob.update).toHaveBeenCalledWith({
+      where: { id: "job-1" },
+      data: {
+        status: "skipped",
+        lastError: expect.stringContaining("Rebuild the approved email system"),
+      },
+    });
+    expect(mocks.admin).not.toHaveBeenCalled();
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the brand snapshot came from different evidence", async () => {
+    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
+    mocks.db.brandStudioProfile.findUnique.mockResolvedValue({
+      status: "complete",
+      evidenceFingerprint: "evidence-v2",
+      snapshotEvidenceFingerprint: "evidence-v1",
+      generatedEvidenceFingerprint: "evidence-v2",
+    });
+
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ skipped: 1 });
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
   });
 
   it("skips an undelivered fulfillment update without generating", async () => {
     mocks.db.emailJob.findMany.mockResolvedValue([
       {
         ...baseJob,
-        topic: "FULFILLMENTS_UPDATE",
-        payload: JSON.stringify({
-          order_id: 1042,
-          shipment_status: "in_transit",
-        }),
+        payload: JSON.stringify({ order_id: 1042, shipment_status: "in_transit" }),
       },
     ]);
     setGraphqlResponse(orderResponse);
 
-    await expect(processPendingEmailJobs()).resolves.toEqual({
-      sent: 0,
-      skipped: 1,
-      retried: 0,
-      failed: 0,
-    });
-
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ skipped: 1 });
     expect(mocks.generateReviewRequestEmail).not.toHaveBeenCalled();
     expect(mocks.sendEmail).not.toHaveBeenCalled();
-    expect(mocks.db.emailJob.update).toHaveBeenCalledWith({
-      where: { id: "job-1" },
-      data: { status: "skipped", lastError: null },
-    });
   });
 
-  it("maps a delivered update into a review request with a real URL", async () => {
-    mocks.db.emailJob.findMany.mockResolvedValue([
-      {
-        ...baseJob,
-        topic: "FULFILLMENTS_UPDATE",
-        payload: JSON.stringify({
-          order_id: 1042,
-          shipment_status: "delivered",
-        }),
-      },
-    ]);
+  it("maps a delivered update into a review request", async () => {
+    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
     setGraphqlResponse(orderResponse);
 
     await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
-
     expect(mocks.generateReviewRequestEmail).toHaveBeenCalledWith(
       expect.objectContaining({
+        language: "es",
         reviewUrl: "https://shop.example.com/products/linen-throw",
       }),
     );
     expect(mocks.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        idempotencyKey:
-          "review:paper-boat.myshopify.com:gid://shopify/Order/1042",
+        idempotencyKey: "review:paper-boat.myshopify.com:gid://shopify/Order/1042",
       }),
     );
   });
 
-  it("maps the matching refund into a refund confirmation", async () => {
-    mocks.db.emailJob.findMany.mockResolvedValue([
-      {
-        ...baseJob,
-        topic: "REFUNDS_CREATE",
-        payload: JSON.stringify({ order_id: 1042, id: 701 }),
-      },
-    ]);
+  it("sends with the business address, an unsubscribe link and one-click headers", async () => {
+    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
     setGraphqlResponse(orderResponse);
 
     await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
-
-    expect(mocks.generateRefundConfirmationEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        reason: "Item arrived damaged",
-        refundedTotal: expect.stringContaining("3"),
-        lineItems: [
-          expect.objectContaining({
-            title: "Linen Throw",
-            quantity: 1,
-            imageUrl: "https://cdn.example.com/linen.jpg",
-          }),
-        ],
-      }),
-    );
-    expect(mocks.sendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        idempotencyKey:
-          "refund:paper-boat.myshopify.com:gid://shopify/Refund/701",
-      }),
-    );
+    const sent = mocks.sendEmail.mock.calls[0][0] as { to: string; html: string; headers: Record<string, string> };
+    expect(sent.html).toContain("Paper Boat · 1 Harbour St, Leith, UK");
+    expect(sent.html).toContain(`href="https://app.test/unsubscribe?t=${sent.to}"`);
+    expect(sent.headers).toEqual({
+      "List-Unsubscribe": `<https://app.test/unsubscribe?t=${sent.to}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
   });
 
-  it("rechecks and maps an eligible abandoned checkout before sending", async () => {
+  it("never generates or sends to an unsubscribed address", async () => {
+    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
+    setGraphqlResponse(orderResponse);
+    mocks.isSuppressed.mockResolvedValueOnce(true);
+
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ skipped: 1, sent: 0 });
+    expect(mocks.generateReviewRequestEmail).not.toHaveBeenCalled();
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("holds the email when the shop has no complete business address", async () => {
+    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
+    setGraphqlResponse(orderResponse);
+    mocks.footer.mockReturnValueOnce({ complete: false, line: null });
+
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ skipped: 1, sent: 0 });
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.db.emailJob.update).toHaveBeenLastCalledWith({
+      where: { id: baseJob.id },
+      data: { status: "skipped", lastError: "Add a complete business address in Sender info before sending." },
+    });
+  });
+
+  it("rechecks and maps an eligible abandoned checkout", async () => {
     mocks.db.emailJob.findMany.mockResolvedValue([
       {
         ...baseJob,
@@ -463,45 +449,9 @@ describe("processPendingEmailJobs", () => {
         }),
       },
     ]);
-    setGraphqlResponse({
-      data: {
-        shop: { name: "Paper Boat Goods" },
-        abandonedCheckouts: {
-          edges: [
-            {
-              node: {
-                abandonedCheckoutUrl:
-                  "https://shop.example.com/checkouts/recover/checkout-token",
-                customer: null,
-                totalPriceSet: {
-                  shopMoney: { amount: "7500", currencyCode: "INR" },
-                },
-                lineItems: {
-                  edges: [
-                    {
-                      node: {
-                        title: null,
-                        quantity: 2,
-                        image: null,
-                        originalTotalPriceSet: {
-                          shopMoney: {
-                            amount: "6400",
-                            currencyCode: "INR",
-                          },
-                        },
-                      },
-                    },
-                  ],
-                },
-              },
-            },
-          ],
-        },
-      },
-    });
+    setGraphqlResponse(checkoutResponse);
 
     await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
-
     expect(mocks.generateAbandonedCartEmail).toHaveBeenCalledWith({
       shopName: "Paper Boat Goods",
       language: "pt",
@@ -518,15 +468,15 @@ describe("processPendingEmailJobs", () => {
         },
       ],
     });
-    expect(mocks.sendEmail).toHaveBeenCalledWith({
-      to: "mina@example.com",
-      subject: "Você deixou algo no carrinho",
-      html: "<html>cart</html>",
-      idempotencyKey: "cart:paper-boat.myshopify.com:checkout-token",
-    });
+    expect(mocks.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "mina@example.com",
+        idempotencyKey: "cart:paper-boat.myshopify.com:checkout-token",
+      }),
+    );
   });
 
-  it("retries a transient failure with exponential backoff", async () => {
+  it("retries a transient provider failure with exponential backoff", async () => {
     mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
     setGraphqlResponse(orderResponse);
     mocks.sendEmail.mockRejectedValue(new Error("provider unavailable"));
@@ -537,7 +487,6 @@ describe("processPendingEmailJobs", () => {
       retried: 1,
       failed: 0,
     });
-
     expect(mocks.db.emailJob.update).toHaveBeenLastCalledWith({
       where: { id: "job-1" },
       data: {
@@ -553,13 +502,7 @@ describe("processPendingEmailJobs", () => {
     setGraphqlResponse(orderResponse);
     mocks.sendEmail.mockRejectedValue(new Error("provider unavailable"));
 
-    await expect(processPendingEmailJobs()).resolves.toEqual({
-      sent: 0,
-      skipped: 0,
-      retried: 0,
-      failed: 1,
-    });
-
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ failed: 1 });
     expect(mocks.db.emailJob.update).toHaveBeenLastCalledWith({
       where: { id: "job-1" },
       data: {
@@ -576,7 +519,6 @@ describe("processPendingEmailJobs", () => {
     mocks.sendEmail.mockRejectedValue(new Error("x".repeat(2_500)));
 
     await processPendingEmailJobs();
-
     expect(mocks.db.emailJob.update).toHaveBeenLastCalledWith({
       where: { id: "job-1" },
       data: expect.objectContaining({ lastError: "x".repeat(2_000) }),

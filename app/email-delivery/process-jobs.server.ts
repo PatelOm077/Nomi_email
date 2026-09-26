@@ -1,18 +1,17 @@
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
-import { generateOrderConfirmationEmail } from "../email-engine/generate-order-confirmation-email";
-import { generateShippingUpdateEmail } from "../email-engine/generate-shipping-update-email";
-import { generateRefundConfirmationEmail } from "../email-engine/generate-refund-confirmation-email";
 import { generateReviewRequestEmail } from "../email-engine/generate-review-request-email";
 import { generateAbandonedCartEmail } from "../email-engine/generate-abandoned-cart-email";
+import { optimizeEmailImageUrl } from "../dashboard/email-image-url.server";
 import { EMAIL_GENERATION_PAUSED } from "../email-engine/generation-status";
-import { EMAIL_LANGUAGES, EMAIL_TONES, type EmailLanguage, type EmailTone } from "../email-engine/types";
+import { EMAIL_LANGUAGES, EMAIL_TONES, type EmailBrandIdentity, type EmailLanguage, type EmailTone } from "../email-engine/types";
 import { sendEmail } from "./provider.server";
+import { loadApprovedBrandIdentity } from "./approved-brand.server";
+import { isSuppressed, listUnsubscribeHeaders, unsubscribeUrl } from "./unsubscribe.server";
+import { withComplianceFooter } from "../email-engine/compliance-footer";
+import { loadShopFooterAddress, resolveSenderFooter } from "../dashboard/sender-footer.server";
 
-// Kept in sync with the same set in queue.server.ts — a job can sit
-// pending long enough for the merchant to flip sendReceiptEmails off
-// after it was queued, so the worker re-checks at send time too.
-const DUPLICATE_RISK_TOPICS = new Set(["ORDERS_CREATE", "REFUNDS_CREATE"]);
+const SENDABLE_TOPICS = new Set(["CHECKOUTS_UPDATE", "FULFILLMENTS_UPDATE"]);
 
 const EMAIL_ORDER_QUERY = `#graphql
   query EmailOrder($id: ID!) {
@@ -22,7 +21,6 @@ const EMAIL_ORDER_QUERY = `#graphql
       name
       email
       customer { firstName }
-      currentTotalPriceSet { shopMoney { amount currencyCode } }
       lineItems(first: 50) {
         edges {
           node {
@@ -30,27 +28,6 @@ const EMAIL_ORDER_QUERY = `#graphql
             quantity
             image { url }
             product { onlineStoreUrl }
-            originalTotalSet { shopMoney { amount currencyCode } }
-          }
-        }
-      }
-      fulfillments(first: 20) {
-        id
-        displayStatus
-        estimatedDeliveryAt
-        trackingInfo { number url company }
-      }
-      refunds {
-        id
-        note
-        totalRefundedSet { shopMoney { amount currencyCode } }
-        refundLineItems(first: 50) {
-          edges {
-            node {
-              quantity
-              subtotalSet { shopMoney { amount currencyCode } }
-              lineItem { title image { url } }
-            }
           }
         }
       }
@@ -89,7 +66,6 @@ type OrderData = {
   name: string;
   email: string | null;
   customer: { firstName: string | null } | null;
-  currentTotalPriceSet: { shopMoney: Money };
   lineItems: {
     edges: {
       node: {
@@ -97,30 +73,9 @@ type OrderData = {
         quantity: number;
         image: { url: string } | null;
         product: { onlineStoreUrl: string | null } | null;
-        originalTotalSet: { shopMoney: Money };
       };
     }[];
   };
-  fulfillments: {
-    id: string;
-    displayStatus: string;
-    estimatedDeliveryAt: string | null;
-    trackingInfo: { number: string | null; url: string | null; company: string | null }[];
-  }[];
-  refunds: {
-    id: string;
-    note: string | null;
-    totalRefundedSet: { shopMoney: Money };
-    refundLineItems: {
-      edges: {
-        node: {
-          quantity: number;
-          subtotalSet: { shopMoney: Money };
-          lineItem: { title: string; image: { url: string } | null };
-        };
-      }[];
-    };
-  }[];
 };
 
 type EmailOrderResponse = {
@@ -159,17 +114,17 @@ type PreparedEmail = {
   idempotencyKey: string;
 };
 
-const SUBJECTS: Record<EmailLanguage, Record<"order" | "shipping" | "refund" | "review" | "cart", string>> = {
-  en: { order: "Order confirmed", shipping: "Shipping update", refund: "Refund processed", review: "How was your order?", cart: "You left something behind" },
-  es: { order: "Pedido confirmado", shipping: "Actualización del envío", refund: "Reembolso procesado", review: "¿Qué te pareció tu pedido?", cart: "Dejaste algo pendiente" },
-  fr: { order: "Commande confirmée", shipping: "Mise à jour de livraison", refund: "Remboursement traité", review: "Que pensez-vous de votre commande ?", cart: "Vous avez laissé quelque chose" },
-  de: { order: "Bestellung bestätigt", shipping: "Versandaktualisierung", refund: "Rückerstattung bearbeitet", review: "Wie war Ihre Bestellung?", cart: "Da ist noch etwas in Ihrem Warenkorb" },
-  it: { order: "Ordine confermato", shipping: "Aggiornamento sulla spedizione", refund: "Rimborso elaborato", review: "Com'è andato il tuo ordine?", cart: "Hai lasciato qualcosa nel carrello" },
-  pt: { order: "Pedido confirmado", shipping: "Atualização de envio", refund: "Reembolso processado", review: "O que achou do seu pedido?", cart: "Você deixou algo no carrinho" },
-  hi: { order: "ऑर्डर की पुष्टि हो गई", shipping: "शिपिंग अपडेट", refund: "रिफ़ंड प्रोसेस हो गया", review: "आपका ऑर्डर कैसा था?", cart: "आपके कार्ट में कुछ रह गया है" },
-  ja: { order: "ご注文を確認しました", shipping: "配送状況のお知らせ", refund: "返金を処理しました", review: "ご注文はいかがでしたか？", cart: "カートに商品が残っています" },
-  ko: { order: "주문이 확인되었습니다", shipping: "배송 업데이트", refund: "환불이 처리되었습니다", review: "주문하신 상품은 어떠셨나요?", cart: "장바구니에 상품이 남아 있습니다" },
-  "zh-CN": { order: "订单已确认", shipping: "配送更新", refund: "退款已处理", review: "您对订单满意吗？", cart: "您的购物车中还有商品" },
+const SUBJECTS: Record<EmailLanguage, Record<"review" | "cart", string>> = {
+  en: { review: "How was your order?", cart: "You left something behind" },
+  es: { review: "¿Qué te pareció tu pedido?", cart: "Dejaste algo pendiente" },
+  de: { review: "Wie war Ihre Bestellung?", cart: "Da ist noch etwas in Ihrem Warenkorb" },
+  fr: { review: "Que pensez-vous de votre commande ?", cart: "Vous avez laissé quelque chose" },
+  pt: { review: "O que achou do seu pedido?", cart: "Você deixou algo no carrinho" },
+  it: { review: "Com'è andato il tuo ordine?", cart: "Hai lasciato qualcosa nel carrello" },
+  ja: { review: "ご注文はいかがでしたか？", cart: "カートに商品が残っています" },
+  nl: { review: "Hoe was je bestelling?", cart: "Je hebt iets laten liggen" },
+  "zh-CN": { review: "您对订单满意吗？", cart: "您的购物车中还有商品" },
+  ko: { review: "주문하신 상품은 어떠셨나요?", cart: "장바구니에 상품이 남아 있습니다" },
 };
 
 function resolveLanguage(value: unknown, fallback: string): EmailLanguage {
@@ -201,20 +156,6 @@ function orderIdFromPayload(payload: Record<string, unknown>): string | null {
     : null;
 }
 
-function resourceId(payload: Record<string, unknown>): string | null {
-  if (typeof payload.admin_graphql_api_id === "string") {
-    return payload.admin_graphql_api_id;
-  }
-  return typeof payload.id === "number" || typeof payload.id === "string"
-    ? String(payload.id)
-    : null;
-}
-
-function matchingResource<T extends { id: string }>(items: T[], id: string | null): T | null {
-  if (!id) return items.at(-1) ?? null;
-  return items.find((item) => item.id === id || item.id.endsWith(`/${id}`)) ?? null;
-}
-
 function subject(kind: keyof (typeof SUBJECTS)["en"], language: EmailLanguage, orderNumber: string) {
   return `${SUBJECTS[language][kind]} — ${orderNumber}`;
 }
@@ -222,10 +163,12 @@ function subject(kind: keyof (typeof SUBJECTS)["en"], language: EmailLanguage, o
 async function prepareAbandonedCart(
   shop: string,
   payload: Record<string, unknown>,
+  brandIdentity: EmailBrandIdentity | undefined,
 ): Promise<PreparedEmail | null> {
   const token = typeof payload.token === "string" ? payload.token : null;
   const email = typeof payload.email === "string" ? payload.email : null;
   if (!token || !email || payload.buyer_accepts_marketing !== true) return null;
+  if (await isSuppressed({ shop, email })) return null;
 
   const { admin } = await unauthenticated.admin(shop);
   const response = await admin.graphql(ABANDONED_CHECKOUT_QUERY);
@@ -242,15 +185,16 @@ async function prepareAbandonedCart(
     shopName: data.shop.name,
     language,
     tone,
+    ...(brandIdentity ? { brandIdentity } : {}),
     customerFirstName: checkout.customer?.firstName ?? null,
     recoveryUrl: checkout.abandonedCheckoutUrl,
     total: formatMoney(checkout.totalPriceSet.shopMoney, language),
-    lineItems: checkout.lineItems.edges.map(({ node }) => ({
+    lineItems: await Promise.all(checkout.lineItems.edges.map(async ({ node }) => ({
       title: node.title ?? "Item",
       quantity: node.quantity,
       price: formatMoney(node.originalTotalPriceSet.shopMoney, language),
-      imageUrl: node.image?.url ?? null,
-    })),
+      imageUrl: await optimizeEmailImageUrl(node.image?.url),
+    }))),
   });
   return {
     to: email,
@@ -264,9 +208,10 @@ async function prepareEmail(
   shop: string,
   topic: string,
   payload: Record<string, unknown>,
+  brandIdentity: EmailBrandIdentity | undefined,
 ): Promise<PreparedEmail | null> {
   if (topic === "CHECKOUTS_UPDATE") {
-    return prepareAbandonedCart(shop, payload);
+    return prepareAbandonedCart(shop, payload, brandIdentity);
   }
 
   const orderId = orderIdFromPayload(payload);
@@ -277,6 +222,7 @@ async function prepareEmail(
   const { data } = (await response.json()) as EmailOrderResponse;
   const order = data.order;
   if (!order?.email) throw new Error(`Order ${orderId} has no customer email.`);
+  if (await isSuppressed({ shop, email: order.email })) return null;
 
   const settings = await db.shopSettings.findUnique({ where: { shop } });
   const language = resolveLanguage(payload.customer_locale, settings?.language ?? "en");
@@ -285,73 +231,23 @@ async function prepareEmail(
     shopName: data.shop.name,
     language,
     tone,
+    ...(brandIdentity ? { brandIdentity } : {}),
     customerFirstName: order.customer?.firstName ?? null,
     orderNumber: order.name,
   };
-
-  if (topic === "ORDERS_CREATE") {
-    const html = await generateOrderConfirmationEmail({
-      ...common,
-      total: formatMoney(order.currentTotalPriceSet.shopMoney, language),
-      lineItems: order.lineItems.edges.map(({ node }) => ({
-        title: node.title,
-        quantity: node.quantity,
-        price: formatMoney(node.originalTotalSet.shopMoney, language),
-        imageUrl: node.image?.url ?? null,
-      })),
-    });
-    return { to: order.email, subject: subject("order", language, order.name), html, idempotencyKey: `order:${shop}:${order.id}` };
-  }
-
-  if (topic === "FULFILLMENTS_CREATE") {
-    const fulfillment = matchingResource(order.fulfillments, resourceId(payload));
-    if (!fulfillment) throw new Error(`Fulfillment was not found on ${order.name}.`);
-    const tracking = fulfillment.trackingInfo[0] ?? null;
-    const html = await generateShippingUpdateEmail({
-      ...common,
-      fulfillmentStatus: fulfillment.displayStatus.toLowerCase().replace(/_/g, " "),
-      trackingNumber: tracking?.number ?? null,
-      carrierName: tracking?.company ?? null,
-      trackingUrl: tracking?.url ?? null,
-      estimatedDelivery: fulfillment.estimatedDeliveryAt,
-      lineItems: order.lineItems.edges.map(({ node }) => ({
-        title: node.title,
-        quantity: node.quantity,
-        imageUrl: node.image?.url ?? null,
-      })),
-    });
-    return { to: order.email, subject: subject("shipping", language, order.name), html, idempotencyKey: `shipping:${shop}:${fulfillment.id}` };
-  }
 
   if (topic === "FULFILLMENTS_UPDATE") {
     if (String(payload.shipment_status).toLowerCase() !== "delivered") return null;
     const html = await generateReviewRequestEmail({
       ...common,
       reviewUrl: order.lineItems.edges[0]?.node.product?.onlineStoreUrl ?? null,
-      lineItems: order.lineItems.edges.map(({ node }) => ({
+      lineItems: await Promise.all(order.lineItems.edges.map(async ({ node }) => ({
         title: node.title,
         quantity: node.quantity,
-        imageUrl: node.image?.url ?? null,
-      })),
+        imageUrl: await optimizeEmailImageUrl(node.image?.url),
+      }))),
     });
     return { to: order.email, subject: subject("review", language, order.name), html, idempotencyKey: `review:${shop}:${order.id}` };
-  }
-
-  if (topic === "REFUNDS_CREATE") {
-    const refund = matchingResource(order.refunds, resourceId(payload));
-    if (!refund) throw new Error(`Refund was not found on ${order.name}.`);
-    const html = await generateRefundConfirmationEmail({
-      ...common,
-      reason: refund.note,
-      refundedTotal: formatMoney(refund.totalRefundedSet.shopMoney, language),
-      lineItems: refund.refundLineItems.edges.map(({ node }) => ({
-        title: node.lineItem.title,
-        quantity: node.quantity,
-        price: formatMoney(node.subtotalSet.shopMoney, language),
-        imageUrl: node.lineItem.image?.url ?? null,
-      })),
-    });
-    return { to: order.email, subject: subject("refund", language, order.name), html, idempotencyKey: `refund:${shop}:${refund.id}` };
   }
 
   throw new Error(`Unsupported email webhook topic: ${topic}`);
@@ -379,14 +275,29 @@ export async function processPendingEmailJobs(limit = 10) {
     if (claimed.count !== 1) continue;
 
     try {
+      if (!SENDABLE_TOPICS.has(job.topic)) {
+        await db.emailJob.update({
+          where: { id: job.id },
+          data: { status: "skipped", lastError: "Email type is no longer supported." },
+        });
+        results.skipped += 1;
+        continue;
+      }
       const settings = await db.shopSettings.findUnique({ where: { shop: job.shop } });
       if (!settings?.sendingEnabled) {
         await db.emailJob.update({ where: { id: job.id }, data: { status: "skipped", lastError: "Sending disabled for shop." } });
         results.skipped += 1;
         continue;
       }
-      if (DUPLICATE_RISK_TOPICS.has(job.topic) && !settings.sendReceiptEmails) {
-        await db.emailJob.update({ where: { id: job.id }, data: { status: "skipped", lastError: "Receipt-email sending not enabled for shop." } });
+      const brandIdentity = await loadApprovedBrandIdentity(job.shop, job.topic);
+      if (brandIdentity === null) {
+        await db.emailJob.update({
+          where: { id: job.id },
+          data: {
+            status: "skipped",
+            lastError: "Brand Studio evidence changed or predates verification. Rebuild the approved email system before sending.",
+          },
+        });
         results.skipped += 1;
         continue;
       }
@@ -394,13 +305,32 @@ export async function processPendingEmailJobs(limit = 10) {
         job.shop,
         job.topic,
         JSON.parse(job.payload) as Record<string, unknown>,
+        brandIdentity,
       );
       if (!prepared) {
         await db.emailJob.update({ where: { id: job.id }, data: { status: "skipped", lastError: null } });
         results.skipped += 1;
         continue;
       }
-      const providerMessageId = await sendEmail(prepared);
+      // Every marketing email carries the business address and a working
+      // unsubscribe link (+ RFC 8058 headers). Without a complete address
+      // the email isn't legal to send, so the job waits for Sender info.
+      const { admin } = await unauthenticated.admin(job.shop);
+      const footer = resolveSenderFooter(settings, await loadShopFooterAddress(admin));
+      if (!footer.complete) {
+        await db.emailJob.update({
+          where: { id: job.id },
+          data: { status: "skipped", lastError: "Add a complete business address in Sender info before sending." },
+        });
+        results.skipped += 1;
+        continue;
+      }
+      const unsubscribeLink = unsubscribeUrl({ shop: job.shop, email: prepared.to });
+      const providerMessageId = await sendEmail({
+        ...prepared,
+        html: withComplianceFooter(prepared.html, { postalLine: footer.line, unsubscribeUrl: unsubscribeLink }),
+        headers: listUnsubscribeHeaders(unsubscribeLink),
+      });
       await db.emailJob.update({
         where: { id: job.id },
         data: { status: "sent", providerMessageId, sentAt: new Date(), lastError: null },

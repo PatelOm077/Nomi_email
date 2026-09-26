@@ -1,0 +1,21 @@
+# Local-only development configuration for use when tunnel providers are unavailable.
+# This intentionally omits webhook subscriptions because Shopify cannot deliver
+# webhooks to localhost and rejects them when --use-localhost is enabled.
+
+client_id = "90627cfe3d6101d033138a44c81ffaa8"
+application_url = "https://localhost:3000"
+embedded = true
+name = "Nomi"
+
+[access_scopes]
+scopes = "write_products,write_metaobjects,write_metaobject_definitions,read_orders,read_fulfillments,read_customers,read_themes,read_files,write_files,write_customers"
+
+[webhooks]
+api_version = "2026-10"
+
+[auth]
+redirect_urls = [ "https://localhost:3000/api/auth" ]
+
+[build]
+include_config_on_deploy = false
+automatically_update_urls_on_dev = true

@@ -57,8 +57,8 @@ describe("generateEmailHtml", () => {
     expect(createMessage).toHaveBeenCalledOnce();
     expect(createMessage).toHaveBeenCalledWith({
       model: "claude-sonnet-5",
-      max_tokens: 4096,
-      output_config: { effort: "medium" },
+      max_tokens: 16_000,
+      output_config: { effort: "high" },
       system: [
         {
           type: "text",

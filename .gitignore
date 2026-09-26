@@ -36,3 +36,18 @@ database.sqlite
 # Scratch/debug output (dev-server logs, screenshot frames, rendered PDFs)
 /tmp/
 /output/
+
+# Agent/session scratch: captured dev-server logs, HTTP dumps, debug screenshots
+.codex-*
+.tmp-*
+/.codex-runtime/
+/.codex-temp/
+/.design/
+
+# Large local-only assets: kept on disk, out of the repo
+/kiln-theme/
+/screenshots/
+/design-handoff/*.fig
+/exports/
+/research/
+/figma-color-versions/

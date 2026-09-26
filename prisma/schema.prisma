@@ -10,48 +10,105 @@ generator client {
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "sqlite"
-  url      = "file:dev.sqlite"
+  // Local development receives the existing `file:dev.sqlite` default from
+  // scripts/with-database-url.mjs. Production supplies a path on Render's
+  // persistent disk, so sessions and queued email jobs survive restarts.
+  url      = env("DATABASE_URL")
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
 
 model ShopSettings {
-  shop           String   @id
-  sendingEnabled Boolean  @default(false)
-  // Separate, narrower opt-in for the two event types that will always
-  // duplicate a Shopify-native customer email (order confirmation, refund
-  // confirmation) with no way to suppress the native side — see
-  // DECISIONS.md, 2026-08-17. Off by default even when sendingEnabled is
-  // on; shipping-update, abandoned-cart, and review-request aren't gated
-  // by this flag because they don't have that duplication problem.
-  sendReceiptEmails Boolean  @default(false)
-  language       String   @default("en")
+  shop                  String    @id
+  sendingEnabled        Boolean   @default(false)
+  // Durable per-shop onboarding gate. Browser storage is not sufficient
+  // for an embedded app because another browser/device would show setup
+  // again. Null means the merchant has never completed or skipped setup.
+  onboardingCompletedAt DateTime?
+  // Last time Nomi saw its "Nomi Script" app embed enabled on the live
+  // theme. Null gates every /app page behind /app/setup (app.tsx); the
+  // dashboard's live check clears it again if the merchant switches the
+  // embed off.
+  appEmbedVerifiedAt    DateTime?
+  language              String    @default("en")
   // One of EMAIL_TONES' codes (email-engine/types.ts). Defaults to the
   // tone every shop had before this field existed — "warm-plain" is the
   // Voice rule design-system-prompt.ts always used, so an un-migrated
   // shop's generated emails don't change until it actively picks another
   // tone in onboarding or the flow header.
-  tone           String   @default("warm-plain")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  tone                  String    @default("warm-plain")
+  // Merchant-controlled presentation and sender overrides. Shopify remains
+  // the source of truth for the store record; these values let Nomi keep
+  // email-specific choices without attempting to mutate Shopify settings.
+  brandLogoUrl          String?
+  brandPrimaryColor     String?
+  senderName            String?
+  senderWebsite         String?
+  senderCountry         String?
+  senderProvince        String?
+  senderCity            String?
+  senderPostalCode      String?
+  senderAddress         String?
+  // JSON array of Shopify Product GIDs. Kept on the per-shop settings row
+  // because this is a small preference list, not a product mirror.
+  excludedProductIds    String    @default("[]")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+// One durable record per shop for the Brand Studio onboarding and generation
+// handoff. JSON is used for the model-authored structured artifacts because
+// their schema is versioned and validated in app/brand-studio/types.ts before
+// it ever reaches the UI or email compiler.
+model BrandStudioProfile {
+  shop                  String    @id
+  status                String    @default("new")
+  evidence              String    @default("{}")
+  snapshot              String    @default("{}")
+  audience              String?
+  feeling               String?
+  directions            String    @default("[]")
+  selectedDirectionId   String?
+  refinement            String?
+  brandSystem           String    @default("{}")
+  lifecycleRecipes      String    @default("[]")
+  // Final Claude-authored, safety-validated HTML keyed by lifecycle id.
+  // Recipes remain the editable semantic plan; this preserves the art-directed
+  // composition instead of rebuilding it through a small fixed template set.
+  renderedEmails        String    @default("{}")
+  // Fingerprints make legacy/unverified evidence fail closed. A completed
+  // system is current only when it was generated from the active evidence.
+  evidenceFingerprint   String    @default("")
+  snapshotEvidenceFingerprint String @default("")
+  generatedEvidenceFingerprint String @default("")
+  evidenceRefreshedAt   DateTime?
+  currentBuildCostMicros Int      @default(0)
+  openAiInputTokens     Int       @default(0)
+  openAiOutputTokens    Int       @default(0)
+  anthropicInputTokens  Int       @default(0)
+  anthropicOutputTokens Int       @default(0)
+  estimatedCostMicros   Int       @default(0)
+  completedAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 // A merchant's choice of real (non-AI) template for one lifecycle email
@@ -73,6 +130,77 @@ model LifecycleTemplateChoice {
   @@unique([shop, slotId])
 }
 
+// Merchant-authored changes made in the template editor. Each email is a
+// free-form, ordered list of blocks (JSON) so the editor can add, duplicate,
+// reorder, hide, and delete arbitrary content the way the approved Figma
+// Make "Safe Block Editor" prototype (Version 8) does. Style values can
+// optionally be copied across the rest of the flow via applySeries.
+model TemplateCustomization {
+  id          String   @id @default(cuid())
+  shop        String
+  lookId      String
+  flowId      String
+  emailIndex  Int
+  blocks      String   @default("[]")
+  style       String   @default("{}")
+  applySeries Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([shop, lookId, flowId, emailIndex])
+  @@index([shop, lookId, flowId])
+}
+
+// A merchant-created one-prompt campaign draft (Campaigns page). Persisted
+// so it survives a reload and appears in the campaigns list. Audience
+// selection and bulk delivery are separate future work per SPEC.md — a
+// campaign here is a reviewed draft, not a scheduled or sent send.
+model Campaign {
+  id       String @id @default(cuid())
+  shop     String
+  status   String @default("draft") // "draft" today; "approved"/"sent" once delivery lands
+  method   String @default("ai") // "ai" | "template"
+  name     String
+  prompt   String?
+  // "product" | "collection" | "all_products" | null (template method)
+  feature              String?
+  // JSON array of Shopify Product GIDs — one entry for "product", up to
+  // three for "all_products".
+  featuredProductIds   String  @default("[]")
+  featuredCollectionId String?
+  discountMethod       String  @default("none") // "code" | "none"
+  discountCode         String?
+  discountType         String? // "percentage" | "fixed"
+  discountValue        String?
+  discountStartsAt     DateTime?
+  discountEndsAt       DateTime?
+  subject              String?
+  previewText          String?
+  html                 String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([shop, createdAt])
+}
+
+// Caches one product's background-removed cutout photo (see
+// app/email-engine/background-removal.ts and app.campaigns.tsx). Background
+// removal calls a paid third-party API, so this table means a merchant
+// featuring the same product across multiple campaigns is only ever billed
+// for it once — a cache hit skips the API call and the Shopify re-upload
+// entirely. Rows are created lazily; nothing here when the feature is
+// unconfigured (no REMOVE_BG_API_KEY) or a removal attempt failed.
+model ProductImageCutout {
+  id             String   @id @default(cuid())
+  shop           String
+  productId      String
+  sourceImageUrl String
+  cutoutImageUrl String
+  createdAt      DateTime @default(now())
+
+  @@unique([shop, productId, sourceImageUrl])
+}
+
 model EmailJob {
   id                String    @id @default(cuid())
   webhookId         String    @unique
@@ -89,4 +217,46 @@ model EmailJob {
   sentAt            DateTime?
 
   @@index([status, availableAt])
+}
+
+// One merchant-owned sending domain per shop, registered in Nomi's Resend
+// account. Campaigns can only send once this row is `verified` — see
+// SENDING_DOMAIN.md. `records` is Resend's records[] stored verbatim so the
+// UI never renders DNS values from constants.
+model SendingDomain {
+  shop             String    @id
+  domain           String    @unique // normalized root: moonandmango.com
+  provider         String    @default("resend")
+  providerDomainId String    @unique
+  region           String    @default("us-east-1")
+  returnPath       String    @default("send")
+  // Mirrors Resend: not_started | pending | verified | partially_verified |
+  // partially_failed | failed | temporary_failure
+  status           String
+  records          String    @default("[]")
+  // Nomi's own DNS lookup per record, keyed "TYPE:name". Explains *why* a
+  // record isn't verified yet (not found, doubled host, value mismatch).
+  recordNotes      String    @default("{}")
+  dmarcState       String    @default("unknown") // unknown | missing | found | multiple
+  dmarcValue       String?
+  lastCheckedAt    DateTime?
+  verifiedAt       DateTime?
+  lastError        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+// Addresses a shop must never email again (unsubscribed, and later hard
+// bounces / spam complaints). Checked before every send. Unsubscribes are
+// also written to the customer's Shopify email-marketing consent; this row
+// is the local guarantee even if that Shopify call fails.
+model EmailSuppression {
+  id        String   @id @default(cuid())
+  shop      String
+  email     String // lowercased
+  reason    String // unsubscribed | bounced | complained
+  source    String? // e.g. "link", "one-click"
+  createdAt DateTime @default(now())
+
+  @@unique([shop, email])
 }

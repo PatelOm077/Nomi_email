@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { ActionFunctionArgs } from "react-router";
 import { processPendingEmailJobs } from "../email-delivery/process-jobs.server";
+import { refreshStaleSendingDomains } from "../email-delivery/domains.server";
 
 function authorized(request: Request): boolean {
   const secret = process.env.EMAIL_JOB_SECRET;
@@ -14,5 +15,8 @@ function authorized(request: Request): boolean {
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (!authorized(request)) return new Response("Unauthorized", { status: 401 });
   const result = await processPendingEmailJobs();
-  return Response.json(result);
+  // Same schedule re-checks sending domains: unverified ones every few
+  // minutes, verified ones daily so a removed record pauses campaigns.
+  const domains = await refreshStaleSendingDomains();
+  return Response.json({ ...result, domains });
 };

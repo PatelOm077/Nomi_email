@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nomi Brand Studio — current onboarding baseline</title>
+  <style>
+    :root {
+      --ink: #201e1d;
+      --paper: #f3f2f2;
+      --sheet: #fbfaf7;
+      --white: #ffffff;
+      --cyan: #0088b0;
+      --cyan-deep: #006786;
+      --magenta: #d6006c;
+      --muted: #746f6b;
+      --rule: #d8d4d0;
+      --serif: Lora, Georgia, "Times New Roman", serif;
+      --sans: "IBM Plex Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { color-scheme: light; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font-family: var(--sans); }
+    button, input, textarea { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 3px solid rgba(0,136,176,.34); outline-offset: 3px; }
+
+    .app { min-height: 100vh; padding: 26px; }
+    .shell { width: min(1440px,100%); min-height: calc(100vh - 52px); margin: auto; border: 1px solid var(--rule); background: var(--sheet); box-shadow: 0 22px 70px rgba(32,30,29,.08); }
+    .topbar { min-height: 70px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid var(--rule); }
+    .brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: inherit; text-decoration: none; }
+    .brand svg { width: 33px; height: 33px; }
+    .brand span { font: 600 24px/1 var(--serif); letter-spacing: -.025em; }
+    .store { display: flex; align-items: center; gap: 18px; color: var(--muted); font-size: 13px; }
+    .link-button { min-height: 44px; padding: 0 4px; border: 0; color: var(--ink); background: transparent; font-weight: 650; font-size: 12px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+    .workspace { display: grid; grid-template-columns: 184px minmax(0,1fr); min-height: calc(100vh - 124px); }
+
+    .rail { padding: 30px 22px; border-right: 1px solid var(--rule); display: flex; flex-direction: column; gap: 7px; }
+    .rail-step { position: relative; min-height: 42px; display: flex; align-items: center; gap: 11px; color: #9a9591; font-size: 11px; font-weight: 550; letter-spacing: .015em; }
+    .rail-step i { width: 25px; height: 25px; display: grid; place-items: center; flex: none; border: 1px solid #cfcac6; border-radius: 50%; font-style: normal; font-size: 10px; }
+    .rail-step.active { color: var(--ink); transform: translateX(3px); }
+    .rail-step.active span { font: 600 15px/1 var(--serif); }
+    .rail-step.active::after { content: ""; position: absolute; left: 36px; right: 0; bottom: 4px; height: 1px; background: linear-gradient(90deg,var(--cyan),transparent); animation: rule-in .55s both; transform-origin: left; }
+    .rail-step.active i { color: white; border-color: var(--cyan); background: var(--cyan); box-shadow: 0 0 0 5px rgba(0,136,176,.09); }
+    .rail-step.complete { color: #55514e; }
+    .rail-step.complete i { color: var(--cyan-deep); border-color: transparent; font-size: 15px; }
+    .budget { margin-top: auto; padding-top: 22px; border-top: 1px solid var(--rule); }
+    .budget > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .11em; }
+    .budget strong { font: 600 19px/1.2 var(--serif); }
+    .budget small { color: var(--muted); font: 500 10px/1 var(--sans); }
+    .budget-bar { height: 3px; margin-top: 12px; overflow: hidden; background: #dfdcda; }
+    .budget-bar i { display: block; width: var(--cost, 0%); height: 100%; background: var(--cyan); transition: width .45s ease; }
+
+    .stage { position: relative; min-width: 0; overflow: hidden; padding: clamp(34px,5vw,74px); }
+    .screen { display: none; animation: stage-in .62s cubic-bezier(.2,.8,.2,1) both; }
+    .screen.active { display: block; }
+    .kicker { margin: 0 0 15px; color: var(--cyan-deep); font-size: 10px; line-height: 1; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
+    .copy { max-width: 690px; }
+    .copy h1 { margin: 0; font: 600 clamp(31px,4vw,56px)/1.04 var(--serif); letter-spacing: -.045em; }
+    .copy > p:not(.kicker) { max-width: 600px; margin: 20px 0 0; color: var(--muted); font-size: 15px; line-height: 1.65; }
+    .primary { min-height: 46px; display: inline-flex; align-items: center; justify-content: center; padding: 0 20px; border: 1px solid var(--ink); color: white; background: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer; transition: transform .18s ease, background .18s ease; }
+    .primary:hover { transform: translateY(-2px); background: var(--cyan-deep); border-color: var(--cyan-deep); }
+    .text-action { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 0; color: var(--ink); background: transparent; font-size: 12px; font-weight: 650; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+    .actions { display: flex; align-items: center; justify-content: flex-end; gap: 22px; margin-top: 28px; }
+
+    .scan { min-height: 610px; display: grid; grid-template-columns: minmax(300px,.85fr) 1.15fr; gap: clamp(50px,7vw,100px); align-items: center; }
+    .folio { position: relative; width: min(390px,100%); aspect-ratio: .78; margin: auto; border: 1px solid var(--ink); background: #e5e0d8; box-shadow: 18px 18px 0 rgba(0,136,176,.12); overflow: hidden; }
+    .folio::before, .folio::after { content: ""; position: absolute; border-radius: 50%; filter: blur(.3px); animation: drift 5s ease-in-out infinite alternate; }
+    .folio::before { width: 78%; aspect-ratio: 1; left: -25%; top: -14%; background: #f4bf25; }
+    .folio::after { width: 70%; aspect-ratio: 1; right: -27%; bottom: -15%; background: #dc4d8c; animation-delay: -.8s; }
+    .folio-card { position: absolute; z-index: 2; display: grid; place-items: center; border: 1px solid rgba(32,30,29,.35); color: var(--ink); background: rgba(251,250,247,.9); box-shadow: 7px 7px 0 rgba(32,30,29,.12); text-align: center; }
+    .folio-card.one { width: 50%; height: 31%; left: 10%; top: 13%; rotate: -6deg; }
+    .folio-card.two { width: 48%; height: 33%; right: 9%; top: 37%; rotate: 5deg; }
+    .folio-card.three { width: 45%; height: 25%; left: 12%; bottom: 7%; rotate: -2deg; }
+    .folio-card b { font: 600 18px/1.1 var(--serif); }
+    .folio-card small { display: block; margin-top: 5px; color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .12em; }
+    .folio > b { position: absolute; z-index: 3; top: 18px; right: 18px; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+    .scan-status { display: flex; align-items: center; gap: 11px; margin: 26px 0 21px; font-size: 12px; }
+    .scan-status span { width: 10px; height: 10px; border-radius: 50%; background: var(--magenta); box-shadow: 0 0 0 0 rgba(214,0,108,.35); animation: pulse 1.55s infinite; }
+
+    label > span, .field-title { display: block; margin-bottom: 9px; color: #5f5a57; font-size: 11px; font-weight: 700; }
+    textarea { width: 100%; min-height: 135px; resize: vertical; padding: 16px; border: 1px solid #cfcac6; border-radius: 0; color: var(--ink); background: white; font-size: 14px; line-height: 1.55; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 34px; }
+    .evidence { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 26px; }
+    .evidence article { min-height: 120px; padding: 15px; border: 1px solid var(--rule); background: white; }
+    .evidence i { width: 7px; height: 7px; display: block; margin-bottom: 13px; border-radius: 50%; background: var(--cyan); }
+    .evidence strong { font-size: 11px; }
+    .evidence p { margin: 6px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .evidence small { color: #97918c; font-size: 8px; text-transform: uppercase; letter-spacing: .1em; }
+    .intent-field { position: relative; }
+    .intent-field .text-action { margin-top: 4px; }
+
+    .creating { min-height: 590px; display: grid; grid-template-columns: 230px 1fr; gap: 58px; align-content: center; }
+    .orbit { position: relative; width: 210px; height: 210px; }
+    .orbit i { position: absolute; width: 104px; height: 132px; border: 1px solid var(--ink); background: white; box-shadow: 7px 7px 0 rgba(32,30,29,.08); animation: breathe 2.4s ease-in-out infinite alternate; }
+    .orbit i:nth-child(1) { left: 0; top: 43px; rotate: -13deg; }
+    .orbit i:nth-child(2) { left: 52px; top: 17px; border-top: 5px solid var(--cyan); animation-delay: .2s; }
+    .orbit i:nth-child(3) { right: 0; top: 43px; border-top: 5px solid var(--magenta); rotate: 12deg; animation-delay: .4s; }
+    .orbit span { position: absolute; z-index: 4; left: 80px; top: 73px; width: 50px; height: 50px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--ink); font: 600 23px/1 var(--serif); }
+    .progress-list { grid-column: 2; display: grid; gap: 10px; margin-top: -25px; }
+    .progress-list span { position: relative; padding-left: 22px; color: #9b9692; font-size: 12px; }
+    .progress-list span::before { content: ""; position: absolute; left: 0; top: 4px; width: 8px; height: 8px; border: 1px solid #bbb5b0; border-radius: 50%; }
+    .progress-list .done { color: #55514e; }
+    .progress-list .done::before { border-color: var(--cyan); background: var(--cyan); }
+    .progress-list .working { color: var(--ink); font-weight: 700; }
+    .progress-list .working::before { border-color: var(--magenta); background: var(--magenta); animation: pulse 1.6s infinite; }
+
+    .directions-head { margin-bottom: 30px; }
+    .direction-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; align-items: start; }
+    .direction { min-width: 0; border: 1px solid var(--rule); background: white; transition: transform .22s ease, box-shadow .22s ease; }
+    .direction:hover { transform: translateY(-4px); box-shadow: 0 17px 38px rgba(32,30,29,.09); }
+    .direction-preview { min-height: 330px; padding: 14px; color: var(--d-ink); background: var(--d-paper); }
+    .direction-preview header { min-height: 30px; display: flex; justify-content: space-between; border-bottom: 1px solid color-mix(in srgb,var(--d-ink) 24%,transparent); font-size: 7px; letter-spacing: .11em; text-transform: uppercase; }
+    .product-art { width: 100%; height: 122px; display: grid; place-items: center; margin-top: 12px; background: color-mix(in srgb,var(--d-primary) 14%,var(--d-paper)); }
+    .product-art svg { width: 78%; height: 78%; }
+    .email-copy { padding: 16px 7px 7px; }
+    .email-copy small { font-size: 7px; letter-spacing: .14em; }
+    .email-copy h2 { margin: 9px 0; font: 600 22px/1.08 var(--serif); letter-spacing: -.04em; }
+    .email-copy p { min-height: 42px; margin: 0 0 12px; font-size: 9px; line-height: 1.45; }
+    .email-copy b { display: inline-flex; min-height: 27px; align-items: center; padding: 0 12px; color: var(--d-paper); background: var(--d-primary); font-size: 7px; text-transform: uppercase; }
+    .direction-details { padding: 18px; }
+    .direction-details > span { color: var(--cyan-deep); font-size: 8px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    .direction-details h2 { margin: 8px 0 9px; font: 600 23px/1.1 var(--serif); }
+    .direction-details p { min-height: 62px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .swatches { display: grid; grid-template-columns: repeat(4,1fr); height: 7px; margin: 16px 0; }
+    .direction .primary { width: 100%; }
+
+    .confirm { display: grid; grid-template-columns: minmax(280px,390px) minmax(360px,1fr); gap: clamp(38px,6vw,90px); align-items: center; }
+    .confirm .direction-details { display: none; }
+    .confirm .direction { pointer-events: none; box-shadow: 0 23px 54px rgba(32,30,29,.11); }
+    .confirm textarea { margin-top: 30px; }
+    .complete { max-width: 850px; display: grid; grid-template-columns: 66px 1fr; gap: 24px; padding-top: 45px; }
+    .complete-mark { width: 60px; height: 60px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--cyan); font-size: 24px; }
+    .system { grid-column: 2; margin-top: 12px; padding: 22px; border: 1px solid var(--rule); background: white; }
+    .system-swatches { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+    .system-swatches i { display: block; height: 44px; border: 1px solid rgba(32,30,29,.12); }
+    .system-swatches small { display: block; margin-top: 6px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
+    .system dl { display: grid; grid-template-columns: repeat(3,1fr); margin: 24px 0 0; padding-top: 18px; border-top: 1px solid var(--rule); }
+    .system dt { margin-bottom: 5px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
+    .system dd { margin: 0; font: 600 14px/1.3 var(--serif); }
+    .complete .actions { grid-column: 2; justify-content: flex-start; }
+
+    .prototype-nav { position: fixed; z-index: 20; right: 18px; bottom: 18px; display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--rule); background: rgba(255,255,255,.94); box-shadow: 0 8px 25px rgba(32,30,29,.12); backdrop-filter: blur(10px); }
+    .prototype-nav button { min-width: 44px; min-height: 44px; border: 1px solid var(--rule); color: var(--ink); background: white; cursor: pointer; }
+    .prototype-nav button:hover { border-color: var(--cyan); }
+    .prototype-nav output { min-width: 78px; text-align: center; font-size: 11px; }
+
+    @keyframes stage-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+    @keyframes rule-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @keyframes drift { to { transform: translate(12px,8px) scale(1.04); } }
+    @keyframes pulse { 70% { box-shadow: 0 0 0 8px rgba(214,0,108,0); } 100% { box-shadow: 0 0 0 0 rgba(214,0,108,0); } }
+    @keyframes breathe { to { translate: 0 -7px; } }
+
+    @media (max-width: 980px) {
+      .app { padding: 16px; }
+      .workspace { grid-template-columns: 1fr; }
+      .rail { padding: 15px 20px; border-right: 0; border-bottom: 1px solid var(--rule); flex-direction: row; align-items: center; overflow-x: auto; }
+      .rail-step { min-width: max-content; }
+      .budget { min-width: 130px; margin: 0 0 0 auto; padding: 0 0 0 18px; border: 0; border-left: 1px solid var(--rule); }
+      .stage { padding: 45px 34px 90px; }
+      .scan { min-height: 580px; grid-template-columns: minmax(260px,.8fr) 1.2fr; gap: 44px; }
+      .direction-grid { grid-template-columns: 1fr; }
+      .direction { display: grid; grid-template-columns: minmax(250px,.72fr) 1fr; }
+    }
+
+    @media (max-width: 640px) {
+      .app { padding: 0; }
+      .shell { border: 0; box-shadow: none; }
+      .topbar { min-height: 62px; padding: 0 16px; }
+      .store > span { display: none; }
+      .rail { padding: 11px 14px; gap: 5px; }
+      .rail-step { min-width: 25px; min-height: 30px; }
+      .rail-step span { display: none; }
+      .budget { min-width: 112px; padding-left: 12px; }
+      .budget > span { display: none; }
+      .budget strong { font-size: 14px; }
+      .stage { padding: 34px 18px 100px; }
+      .copy h1 { font-size: clamp(30px,10vw,42px); }
+      .scan, .creating, .confirm { grid-template-columns: 1fr; }
+      .scan { min-height: auto; gap: 32px; }
+      .folio { width: min(280px,82vw); }
+      .two-col, .evidence { grid-template-columns: 1fr; }
+      .actions { align-items: stretch; flex-direction: column-reverse; }
+      .actions > * { width: 100%; }
+      .creating { gap: 24px; }
+      .orbit { margin: 0 auto; transform: scale(.82); transform-origin: bottom center; }
+      .progress-list { grid-column: 1; }
+      .direction { display: block; }
+      .complete { grid-template-columns: 1fr; padding-top: 12px; }
+      .system, .complete .actions { grid-column: 1; }
+      .system dl { grid-template-columns: 1fr; gap: 15px; }
+      .prototype-nav { right: 10px; bottom: 10px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Nomi dashboard">
+          <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M50 16 14 30l15 6 21-20Z" fill="none" stroke="#0088b0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="m29 36 4 14 17-34" fill="none" stroke="#d6006c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Nomi</span>
+        </a>
+        <div class="store"><span>Denizen Supply Co.</span><button class="link-button" type="button">Finish later</button></div>
+      </header>
+
+      <div class="workspace">
+        <nav class="rail" aria-label="Brand setup progress"></nav>
+        <section class="stage" aria-live="polite">
+          <section class="screen active" data-screen="0">
+            <div class="scan">
+              <div class="folio" aria-hidden="true"><b>Brand evidence</b><div class="folio-card one"><div><b>Field Jacket</b><small>Product</small></div></div><div class="folio-card two"><div><b>Denizen</b><small>Storefront</small></div></div><div class="folio-card three"><div><b>Natural utility</b><small>Signal</small></div></div></div>
+              <div class="copy"><p class="kicker">01 / Reading your store</p><h1>Finding what makes<br>Denizen feel like itself.</h1><p>Nomi is reading your public storefront and Shopify products. Customer and order information stays out of this analysis.</p><div class="scan-status"><span></span><strong>Reading storefront, products and imagery…</strong></div><button class="primary next" type="button">Read my store</button></div>
+            </div>
+          </section>
+
+          <section class="screen" data-screen="1">
+            <div class="copy"><p class="kicker">02 / Brand Snapshot</p><h1>Here’s what we found.</h1><p>Keep what feels true. Correct anything that doesn’t.</p></div>
+            <div class="two-col"><label><span>How the store comes across</span><textarea>Denizen makes practical, considered objects for people who value natural materials and everyday usefulness.</textarea></label><label><span>Its place in the market</span><textarea>Premium without preciousness: modern utility shaped by quiet craft.</textarea></label></div>
+            <div class="evidence"><article><i></i><strong>Material-led</strong><p>Natural textures and construction details lead product storytelling.</p><small>Storefront copy</small></article><article><i></i><strong>Quiet confidence</strong><p>Short, direct language avoids hype and overstatement.</p><small>Product descriptions</small></article><article><i></i><strong>Earth and signal</strong><p>Warm neutrals are interrupted by one high-visibility accent.</p><small>Storefront palette</small></article></div>
+            <div class="actions"><button class="primary next" type="button">This feels right</button></div>
+          </section>
+
+          <section class="screen" data-screen="2">
+            <div class="copy"><p class="kicker">03 / Brand Intent</p><h1>Two things only you can confirm.</h1><p>Write your answer, or let Nomi decide from what it found. Every suggestion stays editable.</p></div>
+            <div class="two-col"><label class="intent-field"><span>Who is your main customer?</span><textarea id="audience" placeholder="Describe the person you most want to reach…"></textarea><button class="text-action suggest" type="button" data-target="audience">Decide for me →</button></label><label class="intent-field"><span>What should your brand feel like?</span><textarea id="feeling" placeholder="Calm, expressive, practical, playful…"></textarea><button class="text-action suggest" type="button" data-target="feeling">Decide for me →</button></label></div>
+            <div class="actions"><button class="text-action" id="suggest-both" type="button">Decide both for me</button><button class="primary next" type="button">Create my directions</button></div>
+          </section>
+
+          <section class="screen" data-screen="3">
+            <div class="creating"><div class="orbit" aria-hidden="true"><i></i><i></i><i></i><span>3</span></div><div class="copy"><p class="kicker">04 / Creating directions</p><h1>One brand.<br>Three honest possibilities.</h1><p>Sonnet is designing distinct interpretations from the intent you approved. Nomi is checking that they don’t collapse into the same template.</p></div><div class="progress-list"><span class="done">Brand evidence understood</span><span class="working">Composing visual directions</span><span>Checking contrast and difference</span></div></div>
+          </section>
+
+          <section class="screen" data-screen="4">
+            <div class="copy directions-head"><p class="kicker">05 / Choose a direction</p><h1>Which version feels most like you?</h1><p>These are creative systems, not reusable templates. Choose the idea worth developing.</p></div>
+            <div class="direction-grid">
+              <article class="direction" style="--d-paper:#eee7d9;--d-ink:#263229;--d-primary:#44634d;--d-accent:#d06942"><div class="direction-preview"><header><span>Field notes</span><b>DENIZEN</b></header><div class="product-art"><svg viewBox="0 0 180 100" aria-hidden="true"><path d="M60 16h60l18 23-14 53H56L42 39Z" fill="#44634d"/><path d="M73 16v76M107 16v76M42 39h96" fill="none" stroke="#eee7d9" stroke-width="2"/></svg></div><div class="email-copy"><small>WELCOME / 01</small><h2>Made to become yours.</h2><p>Useful objects, honest materials, and a quieter way to buy well.</p><b>Meet Denizen</b></div></div><div class="direction-details"><span>Direction</span><h2>Field Notes</h2><p>A warm, utilitarian system inspired by garment labels, maker marks, and annotated product details.</p><div class="swatches"><i style="background:#eee7d9"></i><i style="background:#263229"></i><i style="background:#44634d"></i><i style="background:#d06942"></i></div><button class="primary next" type="button">Choose Field Notes</button></div></article>
+              <article class="direction" style="--d-paper:#f5f0e8;--d-ink:#1f2935;--d-primary:#176d83;--d-accent:#edbb00"><div class="direction-preview"><header><span>Object / study</span><b>DENIZEN</b></header><div class="product-art"><svg viewBox="0 0 180 100" aria-hidden="true"><circle cx="90" cy="50" r="42" fill="#edbb00"/><path d="M49 75 88 19l43 56Z" fill="#176d83" opacity=".87"/></svg></div><div class="email-copy"><small>WELCOME / 01</small><h2>Everyday, reconsidered.</h2><p>Meet the details that make familiar things feel entirely new.</p><b>See the collection</b></div></div><div class="direction-details"><span>Direction</span><h2>Object Study</h2><p>A crisp editorial catalogue with bold geometry, isolated products, and measured bursts of process color.</p><div class="swatches"><i style="background:#f5f0e8"></i><i style="background:#1f2935"></i><i style="background:#176d83"></i><i style="background:#edbb00"></i></div><button class="primary next" type="button">Choose Object Study</button></div></article>
+              <article class="direction" style="--d-paper:#282523;--d-ink:#f4eee3;--d-primary:#e1a6b8;--d-accent:#b8d8ce"><div class="direction-preview"><header><span>A letter from us</span><b>DENIZEN</b></header><div class="product-art"><svg viewBox="0 0 180 100" aria-hidden="true"><path d="M34 76c29-61 85-65 112-9-38-19-74-8-112 9Z" fill="#b8d8ce"/><circle cx="119" cy="35" r="19" fill="#e1a6b8"/></svg></div><div class="email-copy"><small>WELCOME / 01</small><h2>A place for useful things.</h2><p>A personal introduction to what we make, why we make it, and what comes next.</p><b>Come inside</b></div></div><div class="direction-details"><span>Direction</span><h2>Open Letter</h2><p>An intimate, tactile system that feels collected, conversational, and quietly expressive.</p><div class="swatches"><i style="background:#282523"></i><i style="background:#f4eee3"></i><i style="background:#e1a6b8"></i><i style="background:#b8d8ce"></i></div><button class="primary next" type="button">Choose Open Letter</button></div></article>
+            </div>
+          </section>
+
+          <section class="screen" data-screen="5">
+            <div class="confirm"><div class="direction" style="--d-paper:#eee7d9;--d-ink:#263229;--d-primary:#44634d;--d-accent:#d06942"><div class="direction-preview"><header><span>Field notes</span><b>DENIZEN</b></header><div class="product-art"><svg viewBox="0 0 180 100" aria-hidden="true"><path d="M60 16h60l18 23-14 53H56L42 39Z" fill="#44634d"/><path d="M73 16v76M107 16v76M42 39h96" fill="none" stroke="#eee7d9" stroke-width="2"/></svg></div><div class="email-copy"><small>WELCOME / 01</small><h2>Made to become yours.</h2><p>Useful objects, honest materials, and a quieter way to buy well.</p><b>Meet Denizen</b></div></div></div><div><div class="copy"><p class="kicker">06 / Confirm and build</p><h1>Build the system from<br>Field Notes.</h1><p>Approve it as it is, or leave one focused adjustment. Nothing sends when you continue.</p></div><label><span class="field-title">Optional refinement</span><textarea placeholder="For example: Make it warmer and use less oversized type."></textarea></label><div class="actions"><button class="text-action" type="button" data-go="4">See all directions</button><button class="primary next" type="button">Build my email system</button></div></div></div>
+          </section>
+
+          <section class="screen" data-screen="6">
+            <div class="complete"><div class="complete-mark" aria-hidden="true">✓</div><div class="copy"><p class="kicker">Your brand system is ready</p><h1>Field Notes<br>belongs to this store.</h1><p>13 coordinated emails are ready for review. Nothing has been sent or activated.</p></div><div class="system"><div class="system-swatches"><span><i style="background:#eee7d9"></i><small>Paper</small></span><span><i style="background:#263229"></i><small>Ink</small></span><span><i style="background:#44634d"></i><small>Primary</small></span><span><i style="background:#d06942"></i><small>Accent</small></span></div><dl><div><dt>Display</dt><dd>Editorial serif</dd></div><div><dt>Body</dt><dd>Humanist sans</dd></div><div><dt>Setup cost</dt><dd>$2.34</dd></div></dl></div><div class="actions"><button class="text-action" type="button" data-go="0">↻ Replay setup</button><button class="primary" type="button">Review my emails</button></div></div>
+          </section>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <div class="prototype-nav" aria-label="Prototype controls"><button id="prev" type="button" aria-label="Previous screen">←</button><output id="screen-label">Screen 1 / 7</output><button id="next" type="button" aria-label="Next screen">→</button></div>
+
+  <script>
+    const labels = ["Scan","Snapshot","Intent","Create","Choose","Build"];
+    const screens = [...document.querySelectorAll(".screen")];
+    const rail = document.querySelector(".rail");
+    const output = document.querySelector("#screen-label");
+    let current = 0;
+
+    function railIndex(index) { return Math.min(index, 5); }
+    function renderRail(index) {
+      const active = railIndex(index);
+      rail.innerHTML = labels.map((label,i) => `<div class="rail-step ${i === active ? "active" : ""} ${i < active || index === 6 ? "complete" : ""}"><i aria-hidden="true">${i < active || index === 6 ? "✓" : i + 1}</i><span>${label}</span></div>`).join("") + `<aside class="budget"><span>Generation budget</span><strong>${index < 4 ? "$0.18" : index < 6 ? "$0.94" : "$2.34"} <small>/ $3.00</small></strong><div class="budget-bar" style="--cost:${index < 4 ? 6 : index < 6 ? 31 : 78}%"><i></i></div></aside>`;
+    }
+    function show(index) {
+      current = Math.max(0,Math.min(screens.length - 1,index));
+      screens.forEach((screen,i) => screen.classList.toggle("active", i === current));
+      renderRail(current);
+      output.textContent = `Screen ${current + 1} / ${screens.length}`;
+      document.querySelector("#prev").disabled = current === 0;
+      document.querySelector("#next").disabled = current === screens.length - 1;
+      window.scrollTo({top:0,behavior:"smooth"});
+    }
+    document.addEventListener("click", event => {
+      const target = event.target.closest("button");
+      if (!target) return;
+      if (target.matches(".next") || target.id === "next") show(current + 1);
+      if (target.id === "prev") show(current - 1);
+      if (target.dataset.go) show(Number(target.dataset.go));
+      if (target.matches(".suggest")) document.querySelector(`#${target.dataset.target}`).value = target.dataset.target === "audience" ? "Design-aware people who buy fewer, better objects for daily life." : "Grounded, tactile, quietly confident, with a small streak of play.";
+    });
+    document.querySelector("#suggest-both").addEventListener("click", () => {
+      document.querySelector("#audience").value = "Design-aware people who buy fewer, better objects for daily life.";
+      document.querySelector("#feeling").value = "Grounded, tactile, quietly confident, with a small streak of play.";
+    });
+    show(0);
+  </script>
+</body>
+</html>

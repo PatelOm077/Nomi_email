@@ -1,0 +1,20 @@
+CREATE TABLE "BrandStudioProfile" (
+  "shop" TEXT NOT NULL PRIMARY KEY,
+  "status" TEXT NOT NULL DEFAULT 'new',
+  "snapshot" TEXT NOT NULL DEFAULT '{}',
+  "audience" TEXT,
+  "feeling" TEXT,
+  "directions" TEXT NOT NULL DEFAULT '[]',
+  "selectedDirectionId" TEXT,
+  "refinement" TEXT,
+  "brandSystem" TEXT NOT NULL DEFAULT '{}',
+  "lifecycleRecipes" TEXT NOT NULL DEFAULT '[]',
+  "openAiInputTokens" INTEGER NOT NULL DEFAULT 0,
+  "openAiOutputTokens" INTEGER NOT NULL DEFAULT 0,
+  "anthropicInputTokens" INTEGER NOT NULL DEFAULT 0,
+  "anthropicOutputTokens" INTEGER NOT NULL DEFAULT 0,
+  "estimatedCostMicros" INTEGER NOT NULL DEFAULT 0,
+  "completedAt" DATETIME,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL
+);

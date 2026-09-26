@@ -5,6 +5,7 @@ type SendEmailInput = {
   subject: string;
   html: string;
   idempotencyKey: string;
+  headers?: Record<string, string>;
 };
 
 type ResendResponse = { id?: string; message?: string; name?: string };
@@ -14,6 +15,7 @@ export async function sendEmail({
   subject,
   html,
   idempotencyKey,
+  headers,
 }: SendEmailInput): Promise<string> {
   const config = getEmailDeliveryConfig();
   const response = await fetch("https://api.resend.com/emails", {
@@ -28,6 +30,7 @@ export async function sendEmail({
       to: [to],
       subject,
       html,
+      ...(headers ? { headers } : {}),
     }),
   });
   const result = (await response.json()) as ResendResponse;
