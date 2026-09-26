@@ -1,0 +1,17 @@
+{%- comment -%}
+  Nomi Script — the app embed merchants turn on during Nomi setup
+  (app/routes/app.setup.tsx). The admin side detects it by this block's
+  filename ("nomi-script") in the live theme's config/settings_data.json, so
+  renaming this file breaks detection and the theme-editor deep link.
+  It renders nothing visible yet; the storefront pop-up will load from here.
+{%- endcomment -%}
+<div id="nomi-embed" data-shop="{{ shop.permanent_domain }}" hidden></div>
+
+{% schema %}
+{
+  "name": "Nomi Script",
+  "target": "body",
+  "javascript": "nomi.js",
+  "settings": []
+}
+{% endschema %}

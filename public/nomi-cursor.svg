@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="19" height="23" viewBox="0 0 32 38" fill="none">
+  <defs>
+    <filter id="glow" x="-60%" y="-55%" width="240%" height="250%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0.4" stdDeviation="2.2" flood-color="#78B8FF" flood-opacity="0.70"/>
+      <feDropShadow dx="0" dy="0.7" stdDeviation="3.3" flood-color="#A7D2FF" flood-opacity="0.22"/>
+      <feDropShadow dx="0.6" dy="1.1" stdDeviation="0.7" flood-color="#111412" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <g filter="url(#glow)">
+    <path d="M4.25 3.8L28.3 12.75Q30.9 13.72 28.25 15.25L19.35 17.75L15.75 29.45Q14.88 32.3 13.1 29.5L3.3 6.55Q2.05 3 4.25 3.8Z" fill="#FAFBFD" stroke="#FAFBFD" stroke-width="3.15" stroke-linejoin="round"/>
+    <path d="M4.25 3.8L28.3 12.75Q30.9 13.72 28.25 15.25L19.35 17.75L15.75 29.45Q14.88 32.3 13.1 29.5L3.3 6.55Q2.05 3 4.25 3.8Z" fill="#050706" stroke="#050706" stroke-width="1" stroke-linejoin="round"/>
+  </g>
+</svg>

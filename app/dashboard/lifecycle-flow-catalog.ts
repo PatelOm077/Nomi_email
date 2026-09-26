@@ -19,6 +19,7 @@ export interface LifecycleSlotInfo {
 export interface LifecycleFlowInfo {
   id: LifecycleFlowId;
   name: string;
+  purpose: string;
   trigger: string;
   stop: string;
   templateIds: LifecycleEmailId[];
@@ -45,14 +46,16 @@ export function buildLifecycleSlots(shopName: string): LifecycleSlotInfo[] {
 export const LIFECYCLE_FLOWS: LifecycleFlowInfo[] = [
   {
     id: "welcome",
-    name: "Welcome Journey",
+    name: "Welcome",
+    purpose: "First impression",
     trigger: "Valid email is entered in a pop-up or email field.",
     stop: "User places an order · User was in flow in the last 7 days.",
     templateIds: ["welcome-1", "welcome-2", "welcome-3"],
   },
   {
     id: "interest",
-    name: "Product Interest Follow-Up",
+    name: "Still Interested?",
+    purpose: "Consideration",
     trigger: "A consented customer shows product interest without purchasing.",
     stop: "User places an order · User enters Abandoned Cart.",
     templateIds: ["interest-1", "interest-2"],
@@ -60,20 +63,23 @@ export const LIFECYCLE_FLOWS: LifecycleFlowInfo[] = [
   {
     id: "cart",
     name: "Abandoned Cart",
+    purpose: "Recovery",
     trigger: "A consented checkout is left with products in it.",
     stop: "User places an order · Checkout is no longer abandoned.",
     templateIds: ["cart-1", "cart-2", "cart-3"],
   },
   {
     id: "care",
-    name: "Customer Care & Reviews",
+    name: "How Was It?",
+    purpose: "Care",
     trigger: "A customer places an order or a fulfilled order is delivered.",
     stop: "The thank-you and review steps have completed.",
     templateIds: ["thank-you", "review-request"],
   },
   {
     id: "winback",
-    name: "Winback Journey",
+    name: "Welcome Back",
+    purpose: "Re-engagement",
     trigger: "A past customer has not ordered again within the winback window.",
     stop: "User places an order · User was in flow in the last 90 days.",
     templateIds: ["winback-1", "winback-2", "winback-3"],

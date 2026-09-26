@@ -1,0 +1,10 @@
+ALTER TABLE "ShopSettings" ADD COLUMN "brandLogoUrl" TEXT;
+ALTER TABLE "ShopSettings" ADD COLUMN "brandPrimaryColor" TEXT;
+ALTER TABLE "ShopSettings" ADD COLUMN "senderName" TEXT;
+ALTER TABLE "ShopSettings" ADD COLUMN "senderWebsite" TEXT;
+ALTER TABLE "ShopSettings" ADD COLUMN "senderCountry" TEXT;
+ALTER TABLE "ShopSettings" ADD COLUMN "senderProvince" TEXT;
+ALTER TABLE "ShopSettings" ADD COLUMN "senderCity" TEXT;
+ALTER TABLE "ShopSettings" ADD COLUMN "senderPostalCode" TEXT;
+ALTER TABLE "ShopSettings" ADD COLUMN "senderAddress" TEXT;
+ALTER TABLE "ShopSettings" ADD COLUMN "excludedProductIds" TEXT NOT NULL DEFAULT '[]';

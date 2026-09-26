@@ -15,8 +15,7 @@ function stripCodeFence(text: string): string {
     .trim();
 }
 
-// Shared by every email type's generator (order confirmation, abandoned
-// cart, and whatever's next). Two system blocks, each with its own
+// Shared by every supported email generator. Two system blocks, each with its own
 // cache_control: the shared block is byte-identical across every email
 // type, so the first call of ANY type writes it to cache and every later
 // call of every type reads it back — not just repeats of the same type.
@@ -40,8 +39,13 @@ export async function generateEmailHtml(
 
   const response = await getAnthropicClient().messages.create({
     model: "claude-sonnet-5",
-    max_tokens: 4096,
-    output_config: { effort: "medium" },
+    // A single genuinely art-directed email — table-constructed graphics
+    // (see newsletter-prompt.ts's shape-building rules), a full product
+    // showcase, a designed discount treatment — routinely needs more than a
+    // plain notice ever did. 4096 was cutting real generations off
+    // mid-document once the newsletter skeleton started asking for more.
+    max_tokens: 16_000,
+    output_config: { effort: "high" },
     system: [
       {
         type: "text",

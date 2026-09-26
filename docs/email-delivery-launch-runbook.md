@@ -1,202 +1,168 @@
-# Nomi email delivery launch runbook
+# Nomi lifecycle delivery launch runbook
 
-This runbook covers the existing Nomi-owned delivery path: Shopify webhooks
-enqueue durable jobs, `/tasks/email-jobs` processes them, Claude generates the
-HTML, and Resend delivers it. It does not cover newsletter audience selection
-or campaign delivery, which remain separate launch work in `SPEC.md`.
+This runbook covers Nomi-owned lifecycle delivery: Shopify webhooks enqueue
+durable jobs, `/tasks/email-jobs` processes them, Claude generates inbox-safe
+HTML, and Resend delivers it. Nomi does not send order confirmations, shipping
+notifications, or refund confirmations.
 
 ## Launch rule
 
 Do not enable merchant sending until every item in the final checklist is
-green. Keep **Order & refund receipts** off during normal validation: those two
-Nomi messages always duplicate Shopify's native customer receipt.
+green. Test only with a development store and controlled recipient inboxes.
 
 ## 1. Prepare persistent application storage
 
-The current Prisma datasource is SQLite at `prisma/dev.sqlite`. It is safe only
-for a single application instance and only when that file is on a persistent
-volume.
+The local Prisma default is SQLite at `prisma/dev.sqlite`. Production is safe
+only with one application instance and a database file on persistent storage.
 
-1. Provision a persistent volume for the application.
-2. Confirm the deployed process resolves `prisma/dev.sqlite` onto that volume.
-3. Back up the database before every migration or rollback.
-4. Run `npm run setup` once for a fresh deployment and on every release that
-   contains a migration.
-5. Restart the app and confirm both `ShopSettings` and `EmailJob` are readable.
+### Chosen host: Render
 
-Do not launch with ephemeral container storage. Losing `EmailJob` loses pending
-delivery and idempotency history; losing `Session` disconnects the Shopify app.
+`render.yaml` defines one paid Render web service and a persistent disk mounted
+at `/var/data`. It sets `DATABASE_URL=file:/var/data/nomi.sqlite`. Supply every
+`sync: false` value only through Render's secret form, and keep the service at
+one instance while SQLite is in use.
+
+1. Provision the persistent volume.
+2. Confirm the production database resolves onto that volume.
+3. Back up the database before migrations or rollback.
+4. Run `npm run setup` for a fresh deployment and every migration release.
+5. Restart and confirm `ShopSettings` and `EmailJob` remain readable.
+
+Do not launch with ephemeral storage. Losing `EmailJob` loses pending delivery
+and idempotency history; losing `Session` disconnects the Shopify app.
 
 ## 2. Configure the runtime
 
-Set these values in the application host. Never put their values in the
+Set these values in the application host. Never place their values in the
 repository, scheduler URL, screenshots, or logs.
 
-| Variable             | Required | Purpose                                              |
-| -------------------- | -------- | ---------------------------------------------------- |
-| `SHOPIFY_API_KEY`    | Yes      | Shopify app client ID                                |
-| `SHOPIFY_API_SECRET` | Yes      | Webhook and OAuth authentication                     |
-| `SHOPIFY_APP_URL`    | Yes      | Stable public HTTPS origin                           |
-| `SCOPES`             | Yes      | Must match the intended scopes in `shopify.app.toml` |
-| `ANTHROPIC_API_KEY`  | Yes      | Email generation                                     |
-| `RESEND_API_KEY`     | Yes      | Email delivery                                       |
-| `NOMI_FROM_EMAIL`    | Yes      | Verified Resend sender address                       |
-| `NOMI_FROM_NAME`     | No       | Sender display name; defaults to `Nomi`              |
-| `EMAIL_JOB_SECRET`   | Yes      | Authenticates scheduler calls to the worker          |
-| `NODE_ENV`           | Yes      | Set to `production`                                  |
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `SHOPIFY_API_KEY` | Yes | Shopify app client ID |
+| `SHOPIFY_API_SECRET` | Yes | Webhook and OAuth authentication |
+| `SHOPIFY_APP_URL` | Yes | Stable public HTTPS origin |
+| `SCOPES` | Yes | Must match `shopify.app.toml` |
+| `ANTHROPIC_API_KEY` | Yes | Runtime email generation |
+| `RESEND_API_KEY` | Yes | Email delivery |
+| `NOMI_FROM_EMAIL` | Yes | Verified Resend sender address |
+| `NOMI_FROM_NAME` | No | Sender name; defaults to `Nomi` |
+| `EMAIL_JOB_SECRET` | Yes | Authenticates worker calls |
+| `NODE_ENV` | Yes | Set to `production` |
 
-Generate `EMAIL_JOB_SECRET` as a high-entropy random value of at least 32 bytes.
-Store the same value in the application host and the scheduler's encrypted
-secret store. Do not reuse the Shopify or Resend secret.
-
-After configuration, restart the application. Installation creates
-`ShopSettings.sendingEnabled` from the configured-state check only for a new
-shop record; an existing shop must still be checked in the Nomi dashboard.
+Generate `EMAIL_JOB_SECRET` as at least 32 random bytes. Store the same value
+in the application host and scheduler's encrypted secret store.
 
 ## 3. Verify the Resend sender
 
 1. Add the sending domain to Resend.
-2. Publish every DNS record Resend requires for domain verification.
-3. Wait until Resend reports the domain as verified.
-4. Set `NOMI_FROM_EMAIL` to an address on that exact verified domain.
-5. Send a provider-level test to a controlled inbox.
-6. Confirm the message arrives, the From address is correct, and SPF/DKIM pass
-   in the received message headers.
+2. Publish all required DNS records.
+3. Wait for domain verification.
+4. Set `NOMI_FROM_EMAIL` to an address on that domain.
+5. Send a provider-level message to a controlled inbox.
+6. Confirm the From address and SPF/DKIM results in the received headers.
 
 Do not use a Resend onboarding/test sender for production customer mail.
 
-## 4. Activate and verify the existing scheduler
+## 4. Activate the existing scheduler
 
 The repository already contains `.github/workflows/email-jobs.yml`. Do not add
 a second scheduler.
 
-Configure its GitHub environment values:
+Configure:
 
-- Repository variable `NOMI_APP_URL`: the same public HTTPS origin as
-  `SHOPIFY_APP_URL`, without a route suffix.
-- Repository secret `EMAIL_JOB_SECRET`: the exact worker secret configured on
-  the application host.
+- Repository variable `NOMI_APP_URL`: the stable HTTPS app origin.
+- Repository secret `EMAIL_JOB_SECRET`: the worker secret.
 
 Then:
 
-1. Run the workflow manually with **workflow_dispatch**.
+1. Run the workflow manually with `workflow_dispatch`.
 2. Confirm it posts to `${NOMI_APP_URL}/tasks/email-jobs`.
-3. Confirm the response is HTTP 2xx JSON with `sent`, `skipped`, `retried`, and
-   `failed` counters.
-4. Confirm a request with a missing or incorrect bearer secret returns 401.
-5. Enable the scheduled workflow only after the manual call succeeds.
-
-The scheduled job runs every five minutes and makes five one-minute worker
-ticks. GitHub concurrency is configured not to cancel an in-progress worker.
+3. Confirm a 2xx JSON response with `sent`, `skipped`, `retried`, and `failed`.
+4. Confirm a missing or incorrect bearer secret returns 401.
+5. Enable the schedule only after the manual call succeeds.
 
 ## 5. Live-store test sequence
 
-Use a dev store, controlled recipient inbox, low-value products, and reversible
-orders. Keep **Order & refund receipts** off until the dedicated duplicate test.
+Use a development store, controlled inbox, low-value products, and reversible
+test activity.
 
-### Shipping update
+### How Was It?
 
-1. Turn on Nomi's main sending switch.
+1. Enable Nomi lifecycle sending.
 2. Create an order addressed to the controlled inbox.
-3. Create a fulfillment with a real carrier, tracking number, and tracking URL.
-4. Confirm one job is queued and then becomes `sent` with a provider message ID.
-5. Confirm the received Nomi message contains only the real tracking facts and
-   link supplied by Shopify.
-6. Replay the same webhook ID and confirm a second email is not delivered.
+3. Use a product published to the Online Store channel.
+4. Update its fulfillment to `delivered`.
+5. Confirm one review job is queued and sent with a provider message ID.
+6. Confirm the CTA uses the real storefront product URL.
+7. Repeat with an unpublished product and confirm the CTA is omitted.
+8. Replay the same webhook ID and confirm a second email is not delivered.
 
-### Review request
+`fulfillments/update` is used only as the delivered signal. Nomi must not send
+a shipping notification for in-transit, out-for-delivery, or other statuses.
 
-1. Use an order whose first product is published to the Online Store channel.
-2. Update its fulfillment to `delivered`.
-3. Confirm the review request links to the real storefront product URL.
-4. Repeat with an unpublished product and confirm the email omits the CTA
-   rather than inventing a link.
+### Abandoned Cart
 
-### Abandoned checkout recovery
+1. Start a checkout with the controlled inbox and marketing consent.
+2. Confirm a delayed job is scheduled one hour after the update.
+3. Update the checkout and confirm the same job resets instead of duplicating.
+4. Leave it abandoned for the delay and confirm the worker rechecks Shopify
+   before sending.
+5. Start another checkout, complete it as an order, and confirm the pending
+   recovery becomes `skipped` with `Checkout completed.`
+6. Confirm the order event itself creates no customer email.
 
-1. Start a checkout using the controlled inbox and grant marketing consent.
-2. Confirm a delayed job is created for one hour after the update.
-3. Update the checkout and confirm the same job is reset instead of duplicated.
-4. Leave it abandoned for the full delay and confirm the worker rechecks that
-   it remains in Shopify's abandoned-checkout list before sending.
-5. Run a second checkout, complete it as an order, and confirm the pending
-   recovery job becomes `skipped` with `Checkout completed.`
+### Removed email-type safeguard
 
-### Order and refund receipt safeguard
-
-Shopify's native order and refund receipts cannot be disabled globally. Perform
-this test only with the controlled inbox and expect two customer messages.
-
-1. Confirm **Order & refund receipts** is off and that Nomi skips these topics.
-2. Turn it on temporarily and create one controlled order and refund.
-3. Confirm Nomi sends at most one message per webhook ID while Shopify also
-   sends its native receipt.
-4. Turn the receipt switch off immediately after the test.
+1. Trigger order creation, fulfillment creation, and refund events in the test
+   store.
+2. Confirm Nomi creates no order, shipping, or refund email job.
+3. If a pre-migration legacy job exists for a removed type, confirm the worker
+   marks it skipped with `Email type is no longer supported.`
 
 ### Localization and rendering
 
-For each tested message, confirm:
+For each Nomi lifecycle message, confirm:
 
-- the customer locale wins when supported and shop language is the fallback;
-- shop/product names, order numbers, URLs, currency, and tracking values remain
-  unchanged;
-- customer-visible copy is localized;
-- HTML has no Markdown fence, script, external stylesheet, or fake `href="#"`;
-- desktop and mobile rendering remain readable in the controlled inbox.
+- supported customer locale wins and shop language is the fallback;
+- names, URLs, products, order numbers, and currency remain factual;
+- HTML has no Markdown fence, script, external stylesheet, or fake link;
+- desktop and mobile inbox rendering remain readable.
 
-## 6. Monitoring during launch
+## 6. Monitoring
 
-For the first launch window, record without exposing payload contents:
+Record without exposing payload contents:
 
 - worker counters from every scheduled invocation;
-- count of jobs by `pending`, `processing`, `sent`, `skipped`, and `failed`;
+- jobs by `pending`, `processing`, `sent`, `skipped`, and `failed`;
 - age of the oldest pending job;
 - jobs with attempts greater than zero;
 - Resend rejection and bounce events;
 - unexpected duplicate customer reports.
 
-Investigate any job left `processing`, any increase in `failed`, or a pending
-age longer than the scheduler interval plus generation time.
+Investigate any job stuck in `processing`, increase in `failed`, or pending age
+longer than the scheduler interval plus generation time.
 
 ## 7. Rollback
 
-Use the narrowest rollback that stops customer impact.
-
-1. Turn off **Order & refund receipts** first if duplicate receipts are the
-   issue. The worker rechecks this setting immediately before generation.
-2. Turn off the main Nomi sending switch to make newly claimed pending jobs
-   become `skipped` at the worker settings check.
-3. Disable the GitHub Actions schedule to preserve still-pending work without
-   starting new worker runs.
-4. If messages continue because a worker was already past its settings check,
-   revoke the Resend API key as the delivery-level emergency stop.
-5. Roll back the application version without deleting or recreating the
-   database. Restore the database backup only when the rollback specifically
-   requires it.
-6. Diagnose and test with controlled data before re-enabling the scheduler or
-   merchant switches.
-
-Changing a switch is not guaranteed to stop a job already processing after its
-last settings check. Use the provider-key stop for an active incident where no
-further customer message is acceptable.
+1. Turn off lifecycle sending so newly claimed work is skipped.
+2. Disable the GitHub Actions schedule to preserve still-pending work.
+3. If a worker has already passed its settings check, revoke the Resend API key
+   as the delivery-level emergency stop.
+4. Roll back the application without deleting or recreating the database.
+5. Restore a database backup only when the rollback specifically requires it.
+6. Diagnose with controlled data before re-enabling delivery.
 
 ## Final launch checklist
 
-- [ ] Production storage is persistent, backed up, and limited to one app
-      instance while SQLite is in use.
-- [ ] `npm run setup`, `npm test`, `npm run lint`, and `npm run build` pass on
-      the release revision.
-- [ ] Shopify production URLs and OAuth redirects point to the stable HTTPS
-      origin.
-- [ ] Required Shopify webhooks are deployed from `shopify.app.toml`.
-- [ ] Resend domain and From address are verified; SPF/DKIM pass.
-- [ ] Anthropic, Resend, Shopify, and worker secrets are set only in secret
-      stores.
-- [ ] Manual worker dispatch succeeds and unauthorized calls return 401.
-- [ ] Scheduled workflow runs successfully without overlapping workers.
-- [ ] Shipping, review, abandoned recovery, cancellation, retry, and webhook
-      replay tests pass against the controlled inbox.
-- [ ] Main sending is opt-in and **Order & refund receipts** remains off by
-      default.
-- [ ] Rollback owner, provider-key access, and database backup location are
-      known before launch.
+- [ ] Persistent production storage is backed up and limited to one instance.
+- [ ] `npm run setup`, `npm test`, `npm run lint`, and `npm run build` pass.
+- [ ] Shopify URLs and OAuth redirects use the stable HTTPS origin.
+- [ ] Webhook subscriptions are deployed from `shopify.app.toml`.
+- [ ] Resend sender verification and SPF/DKIM pass.
+- [ ] Anthropic, Resend, Shopify, and worker secrets exist only in secret stores.
+- [ ] Manual worker dispatch succeeds and unauthorized requests return 401.
+- [ ] Scheduled work runs without overlapping workers.
+- [ ] How Was It?, abandoned recovery, cancellation, retry, and replay pass.
+- [ ] Order, shipping, and refund events produce no Nomi email.
+- [ ] Lifecycle sending remains merchant opt-in.
+- [ ] Rollback owner, provider access, and backup location are known.

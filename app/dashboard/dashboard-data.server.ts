@@ -1,6 +1,6 @@
 // Shared Shopify-shape data-fetching for every route that needs the shop's
-// live store record (products, most recent order, abandoned cart, shipped
-// order, refund) — currently app._index.tsx (the Flow Editor) and
+// live store record (products, most recent order, abandoned cart, delivered
+// order) — currently app._index.tsx (the Flow Editor) and
 // app.additional.tsx (the Templates page). One round trip, mapped once, so
 // a second page's data need doesn't mean a second near-identical query —
 // see CLAUDE.md: "Check whether an existing fetch already answers the new
@@ -8,7 +8,8 @@
 
 // One round trip: shop identity, the active theme's name (the closest thing
 // to a "brand asset" the Admin API exposes — there's no logo/colors field),
-// a handful of products, and the most recent order/shipment/cart/refund.
+// the most recent order/cart and a delivered order. Products are loaded separately
+// through the paginated catalogue query below so no active product is omitted.
 const DASHBOARD_QUERY = `#graphql
   query DashboardData {
     shop {
@@ -17,29 +18,6 @@ const DASHBOARD_QUERY = `#graphql
     themes(first: 1, roles: [MAIN]) {
       nodes {
         name
-      }
-    }
-    products(first: 4, sortKey: UPDATED_AT, reverse: true) {
-      edges {
-        node {
-          id
-          title
-          onlineStoreUrl
-          featuredMedia {
-            preview {
-              image {
-                url
-                altText
-              }
-            }
-          }
-          priceRangeV2 {
-            minVariantPrice {
-              amount
-              currencyCode
-            }
-          }
-        }
       }
     }
     orders(first: 1, sortKey: CREATED_AT, reverse: true) {
@@ -76,7 +54,7 @@ const DASHBOARD_QUERY = `#graphql
         }
       }
     }
-    shippedOrders: orders(
+    deliveredOrders: orders(
       first: 1
       sortKey: CREATED_AT
       reverse: true
@@ -105,12 +83,6 @@ const DASHBOARD_QUERY = `#graphql
           }
           fulfillments(first: 1) {
             displayStatus
-            estimatedDeliveryAt
-            trackingInfo {
-              number
-              url
-              company
-            }
           }
         }
       }
@@ -149,49 +121,52 @@ const DASHBOARD_QUERY = `#graphql
         }
       }
     }
-    refundedOrders: orders(
-      first: 10
+  }
+`;
+
+const DASHBOARD_CATALOG_QUERY = `#graphql
+  query DashboardCatalog($after: String) {
+    shop {
+      name
+    }
+    products(
+      first: 100
+      after: $after
       sortKey: UPDATED_AT
       reverse: true
-      query: "financial_status:refunded OR financial_status:partially_refunded"
+      query: "status:active"
     ) {
-      edges {
-        node {
-          name
-          customer {
-            firstName
-          }
-          refunds {
-            note
-            totalRefundedSet {
-              shopMoney {
-                amount
-                currencyCode
-              }
-            }
-            refundLineItems(first: 5) {
-              edges {
-                node {
-                  quantity
-                  subtotalSet {
-                    shopMoney {
-                      amount
-                      currencyCode
-                    }
-                  }
-                  lineItem {
-                    title
-                    image {
-                      url
-                      altText
-                    }
-                  }
-                }
-              }
+      nodes {
+        id
+        title
+        onlineStoreUrl
+        featuredMedia {
+          preview {
+            image {
+              url
+              altText
             }
           }
         }
+        priceRangeV2 {
+          minVariantPrice {
+            amount
+            currencyCode
+          }
+        }
       }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`;
+
+const DASHBOARD_SHOP_IDENTITY_QUERY = `#graphql
+  query DashboardShopIdentity {
+    shop {
+      name
     }
   }
 `;
@@ -200,17 +175,6 @@ type DashboardQueryResponse = {
   data: {
     shop: { name: string };
     themes: { nodes: { name: string }[] };
-    products: {
-      edges: {
-        node: {
-          id: string;
-          title: string;
-          onlineStoreUrl: string | null;
-          featuredMedia: { preview: { image: { url: string; altText: string | null } | null } | null } | null;
-          priceRangeV2: { minVariantPrice: { amount: string; currencyCode: string } };
-        };
-      }[];
-    };
     orders: {
       edges: {
         node: {
@@ -230,7 +194,7 @@ type DashboardQueryResponse = {
         };
       }[];
     };
-    shippedOrders: {
+    deliveredOrders: {
       edges: {
         node: {
           name: string;
@@ -247,8 +211,6 @@ type DashboardQueryResponse = {
           };
           fulfillments: {
             displayStatus: string;
-            estimatedDeliveryAt: string | null;
-            trackingInfo: { number: string | null; url: string | null; company: string | null }[];
           }[];
         };
       }[];
@@ -272,34 +234,6 @@ type DashboardQueryResponse = {
         };
       }[];
     };
-    refundedOrders: {
-      edges: {
-        node: {
-          name: string;
-          customer: { firstName: string | null } | null;
-          refunds: {
-            note: string | null;
-            totalRefundedSet: {
-              shopMoney: { amount: string; currencyCode: string };
-            };
-            refundLineItems: {
-              edges: {
-                node: {
-                  quantity: number;
-                  subtotalSet: {
-                    shopMoney: { amount: string; currencyCode: string };
-                  };
-                  lineItem: {
-                    title: string;
-                    image: { url: string; altText: string | null } | null;
-                  };
-                };
-              }[];
-            };
-          }[];
-        };
-      }[];
-    };
   };
 };
 
@@ -310,19 +244,6 @@ function formatMoney(amount: string, currencyCode: string) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(Number(amount));
-}
-
-// "IN_TRANSIT" -> "in transit". Covers every FulfillmentDisplayStatus
-// value without a lookup table — they're all SCREAMING_SNAKE_CASE words.
-function formatFulfillmentStatus(status: string): string {
-  return status.toLowerCase().replace(/_/g, " ");
-}
-
-function formatDeliveryDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-  }).format(new Date(iso));
 }
 
 export interface DashboardProduct {
@@ -348,30 +269,11 @@ export interface DashboardCart {
   lineItems: { title: string; quantity: number; imageUrl: string | null; imageAlt: string; total: string }[];
 }
 
-export interface DashboardShippingUpdate {
-  orderNumber: string;
-  customerFirstName: string | null;
-  fulfillmentStatus: string;
-  trackingNumber: string | null;
-  carrierName: string | null;
-  trackingUrl: string | null;
-  estimatedDelivery: string | null;
-  lineItems: { title: string; quantity: number; imageUrl: string | null; imageAlt: string }[];
-}
-
 export interface DashboardReviewRequest {
   orderNumber: string;
   customerFirstName: string | null;
   reviewUrl: string | null;
   lineItems: { title: string; quantity: number; imageUrl: string | null; imageAlt: string }[];
-}
-
-export interface DashboardRefund {
-  orderNumber: string;
-  customerFirstName: string | null;
-  reason: string | null;
-  total: string;
-  lineItems: { title: string; quantity: number; imageUrl: string | null; imageAlt: string; total: string }[];
 }
 
 export interface DashboardData {
@@ -380,33 +282,142 @@ export interface DashboardData {
   products: DashboardProduct[];
   order: DashboardOrder | null;
   cart: DashboardCart | null;
-  shippingUpdate: DashboardShippingUpdate | null;
   reviewRequest: DashboardReviewRequest | null;
-  refund: DashboardRefund | null;
 }
 
 // Structural typing on purpose — matches Shopify's admin.graphql(...) shape
 // without importing a Shopify SDK type here, so this module stays a plain
 // data-shaping helper any route's loader can call with its own `admin`.
 interface GraphqlAdmin {
-  graphql: (query: string) => Promise<Response>;
+  graphql: (
+    query: string,
+    options?: { variables?: Record<string, unknown> },
+  ) => Promise<Response>;
 }
 
-export async function loadDashboardData(admin: GraphqlAdmin): Promise<DashboardData> {
-  const response = await admin.graphql(DASHBOARD_QUERY);
+export async function loadDashboardShopName(admin: GraphqlAdmin): Promise<string> {
+  const response = await admin.graphql(DASHBOARD_SHOP_IDENTITY_QUERY);
+  const { data } = (await response.json()) as { data: { shop: { name: string } } };
+  return data.shop.name;
+}
+
+// Dashboard data only drives previews and display. A short cache keeps
+// in-app navigation responsive without making the UI meaningfully stale.
+const DASHBOARD_CACHE_TTL_MS = 60_000;
+const dashboardDataCache = new Map<
+  string,
+  { expiresAt: number; value: DashboardData }
+>();
+
+const dashboardCatalogCache = new Map<
+  string,
+  { expiresAt: number; value: { shopName: string; products: DashboardProduct[] } }
+>();
+
+type DashboardCatalogResponse = {
+  data?: {
+    shop?: { name?: string };
+    products?: {
+      nodes?: Array<{
+        id: string;
+        title: string;
+        onlineStoreUrl: string | null;
+        featuredMedia: {
+          preview: {
+            image: { url: string; altText: string | null } | null;
+          } | null;
+        } | null;
+        priceRangeV2: {
+          minVariantPrice: { amount: string; currencyCode: string };
+        };
+      }>;
+      pageInfo?: { hasNextPage: boolean; endCursor: string | null };
+    };
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+/**
+ * Loads every active Shopify product with its authoritative featured image.
+ * The catalogue is paginated instead of silently stopping at Shopify's
+ * per-request connection limit, then cached briefly for in-app navigation.
+ */
+export async function loadDashboardCatalog(
+  admin: GraphqlAdmin,
+  cacheKey?: string,
+): Promise<{ shopName: string; products: DashboardProduct[] }> {
+  const cached = cacheKey ? dashboardCatalogCache.get(cacheKey) : undefined;
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const products: DashboardProduct[] = [];
+  let shopName = "";
+  let after: string | null = null;
+
+  do {
+    const response = await admin.graphql(DASHBOARD_CATALOG_QUERY, {
+      variables: { after },
+    });
+    const payload = (await response.json()) as DashboardCatalogResponse;
+    if (!response.ok || !payload.data?.shop?.name || !payload.data.products) {
+      const detail = payload.errors
+        ?.map(({ message }) => message)
+        .filter(Boolean)
+        .join("; ");
+      throw new Error(
+        detail
+          ? `Shopify could not provide the product catalogue: ${detail}`
+          : "Shopify could not provide the product catalogue.",
+      );
+    }
+
+    shopName = payload.data.shop.name;
+    products.push(
+      ...(payload.data.products.nodes ?? []).map((node) => ({
+        id: node.id,
+        title: node.title,
+        productUrl: node.onlineStoreUrl,
+        imageUrl: node.featuredMedia?.preview?.image?.url ?? null,
+        imageAlt: node.featuredMedia?.preview?.image?.altText ?? node.title,
+        price: formatMoney(
+          node.priceRangeV2.minVariantPrice.amount,
+          node.priceRangeV2.minVariantPrice.currencyCode,
+        ),
+      })),
+    );
+
+    const pageInfo = payload.data.products.pageInfo;
+    after = pageInfo?.hasNextPage ? pageInfo.endCursor : null;
+    if (pageInfo?.hasNextPage && !after) {
+      throw new Error("Shopify returned an incomplete product catalogue cursor.");
+    }
+  } while (after);
+
+  const value = { shopName, products };
+  if (cacheKey) {
+    dashboardCatalogCache.set(cacheKey, {
+      expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS,
+      value,
+    });
+  }
+  return value;
+}
+
+export async function loadDashboardData(
+  admin: GraphqlAdmin,
+  cacheKey?: string,
+): Promise<DashboardData> {
+  const cached = cacheKey ? dashboardDataCache.get(cacheKey) : undefined;
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const [response, catalog] = await Promise.all([
+    admin.graphql(DASHBOARD_QUERY),
+    loadDashboardCatalog(admin, cacheKey),
+  ]);
   const { data } = (await response.json()) as DashboardQueryResponse;
 
-  const products = data.products.edges.map(({ node }) => ({
-    id: node.id,
-    title: node.title,
-    productUrl: node.onlineStoreUrl,
-    imageUrl: node.featuredMedia?.preview?.image?.url ?? null,
-    imageAlt: node.featuredMedia?.preview?.image?.altText ?? node.title,
-    price: formatMoney(
-      node.priceRangeV2.minVariantPrice.amount,
-      node.priceRangeV2.minVariantPrice.currencyCode,
-    ),
-  }));
+  const products = catalog.products;
 
   const orderNode = data.orders.edges[0]?.node ?? null;
   const order = orderNode
@@ -452,22 +463,20 @@ export async function loadDashboardData(admin: GraphqlAdmin): Promise<DashboardD
       }
     : null;
 
-  const shippedOrderNode = data.shippedOrders.edges[0]?.node ?? null;
-  const fulfillment = shippedOrderNode?.fulfillments[0] ?? null;
-  const tracking = fulfillment?.trackingInfo[0] ?? null;
-  const shippingUpdate =
-    shippedOrderNode && fulfillment
+  const deliveredOrderNode = data.deliveredOrders.edges[0]?.node ?? null;
+  const deliveredFulfillment = deliveredOrderNode?.fulfillments[0] ?? null;
+
+  // A review request only uses an order whose fulfillment is confirmed
+  // delivered; other fulfillment states never become customer email.
+  const reviewRequest =
+    deliveredOrderNode && deliveredFulfillment?.displayStatus === "DELIVERED"
       ? {
-          orderNumber: shippedOrderNode.name,
-          customerFirstName: shippedOrderNode.customer?.firstName ?? null,
-          fulfillmentStatus: formatFulfillmentStatus(fulfillment.displayStatus),
-          trackingNumber: tracking?.number ?? null,
-          carrierName: tracking?.company ?? null,
-          trackingUrl: tracking?.url ?? null,
-          estimatedDelivery: fulfillment.estimatedDeliveryAt
-            ? formatDeliveryDate(fulfillment.estimatedDeliveryAt)
-            : null,
-          lineItems: shippedOrderNode.lineItems.edges.map(({ node }) => ({
+          orderNumber: deliveredOrderNode.name,
+          customerFirstName: deliveredOrderNode.customer?.firstName ?? null,
+          reviewUrl:
+            deliveredOrderNode.lineItems.edges[0]?.node.product?.onlineStoreUrl ??
+            null,
+          lineItems: deliveredOrderNode.lineItems.edges.map(({ node }) => ({
             title: node.title,
             quantity: node.quantity,
             imageUrl: node.image?.url ?? null,
@@ -476,56 +485,21 @@ export async function loadDashboardData(admin: GraphqlAdmin): Promise<DashboardD
         }
       : null;
 
-  // Reuses the same shippedOrders fetch above rather than a separate
-  // query — a review request is just that order once its fulfillment is
-  // confirmed delivered, not shipped-but-in-transit.
-  const reviewRequest =
-    shippingUpdate && shippingUpdate.fulfillmentStatus === "delivered"
-      ? {
-          orderNumber: shippingUpdate.orderNumber,
-          customerFirstName: shippingUpdate.customerFirstName,
-          reviewUrl:
-            shippedOrderNode!.lineItems.edges[0]?.node.product?.onlineStoreUrl ??
-            null,
-          lineItems: shippingUpdate.lineItems,
-        }
-      : null;
-
-  const refundedOrderNode = data.refundedOrders.edges.find(
-    ({ node }) => node.refunds.length > 0,
-  )?.node;
-  const refundNode = refundedOrderNode?.refunds.at(-1) ?? null;
-  const refund =
-    refundedOrderNode && refundNode
-      ? {
-          orderNumber: refundedOrderNode.name,
-          customerFirstName: refundedOrderNode.customer?.firstName ?? null,
-          reason: refundNode.note,
-          total: formatMoney(
-            refundNode.totalRefundedSet.shopMoney.amount,
-            refundNode.totalRefundedSet.shopMoney.currencyCode,
-          ),
-          lineItems: refundNode.refundLineItems.edges.map(({ node }) => ({
-            title: node.lineItem.title,
-            quantity: node.quantity,
-            imageUrl: node.lineItem.image?.url ?? null,
-            imageAlt: node.lineItem.image?.altText ?? node.lineItem.title,
-            total: formatMoney(
-              node.subtotalSet.shopMoney.amount,
-              node.subtotalSet.shopMoney.currencyCode,
-            ),
-          })),
-        }
-      : null;
-
-  return {
+  const dashboardData = {
     shopName: data.shop.name,
     themeName: data.themes.nodes[0]?.name ?? null,
     products,
     order,
     cart,
-    shippingUpdate,
     reviewRequest,
-    refund,
   };
+
+  if (cacheKey) {
+    dashboardDataCache.set(cacheKey, {
+      expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS,
+      value: dashboardData,
+    });
+  }
+
+  return dashboardData;
 }

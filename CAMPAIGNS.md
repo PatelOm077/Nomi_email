@@ -85,6 +85,35 @@ The **action** handles `POST` (the real "Generate" submission):
   photography — decoration must come from color/shape/typography only,
   never a fabricated image.
 
+### AI-generated photography
+
+Between loading products and calling Claude for the HTML, the action runs
+`resolveGeneratedImages`:
+
+1. `planCampaignImages` (`app/email-engine/campaign-image-plan.ts`) — a
+   Claude call that sees the real product photos, product type, merchant
+   description, and approved Brand Studio identity, and returns 0–3 photo
+   briefs (hero / editorial / material / scene) plus one shared art
+   direction. Zero photos is a normal outcome. A photo that shows a
+   product must name a supplied product with a real photo; anything else
+   is dropped.
+2. `generateImage` (`image-generation.ts`) — OpenAI Image API, in parallel.
+   Product photos go to `/v1/images/edits` with the real product photo as
+   the reference; the rest to `/v1/images/generations`.
+3. `uploadImageBufferToShopify(..., { waitForReadyMs: 30_000 })` hosts each
+   one on the shop's CDN.
+4. The newsletter prompt's rule 4b places each photo once, as a large
+   block, never with text over it, tagged `data-nomi-seam="image"` so the
+   seam editor can swap it.
+
+Every step returns fewer photos on failure rather than failing the
+campaign. A full generation with 3 photos takes about 3 minutes.
+
+The action also loads the approved Brand Studio identity, so campaigns
+wear the merchant's real palette, voice, and logo. The brand name comes
+from `evidence.shopName`, never `brandSystem.name` (that's the creative
+direction's label).
+
 ## Frontend: the picker UI
 
 Three feature modes, each a real combobox backed by the search helpers
@@ -126,20 +155,34 @@ immediately and reliably. Inline styles are part of the JS bundle itself,
 not a separately-loaded/cached resource, so they render correctly
 regardless of whatever was going on with the external stylesheet in this
 environment. **If you add a new element to the picker UI, give its sizing
-an inline `style`, not just a class** — colors/borders/hover states are
-fine to leave CSS-only.
+an inline `style`, not just a class.**
 
-### Debugging note: the embedded iframe is a black box to browser tools
+**Update:** "colors/borders are fine to leave CSS-only" turned out to be
+wrong for `.nomi-cc-picker-row` specifically — it silently fell back to
+unstyled native `<button>` chrome (grey background, outset border) in the
+live embedded iframe, even though `.nomi-cc-picker-panel` and
+`.nomi-cc-picker-trigger` right next to it rendered their CSS-only colors
+correctly. `ROW_STYLE` (plus `ROW_SELECTED_STYLE`/`ROW_DISABLED_STYLE`) now
+inlines `background`/`border`/`borderRadius`/`color`/`font` too. Don't
+assume a class is safe just because a sibling class on the same panel is —
+verify each one's actual live rendering.
 
-Claude in Chrome's `read_page` / `find` / `read_console_messages` /
-`read_network_requests` cannot see inside this app's iframe when it's
-loaded through the embedded Shopify admin URL — they only report on the
-outer `admin.shopify.com` frame. Screenshots (`computer` tool, especially
-`zoom` — plain `screenshot` calls were observed returning stale frames a
-few times) are the only reliable signal of what the app is actually
-rendering. To check server-side state instead, `curl` the dev server
-directly, or query Shopify's Admin API with the access token stored in
-`dev.sqlite`'s `Session` table.
+### Debugging note: use Chrome DevTools MCP for the embedded iframe
+
+Claude in Chrome's page-level `read_page` / `find` / coordinate tools cannot
+reliably inspect or click inside the app's cross-origin Shopify iframe. They
+only operate on the outer `admin.shopify.com` renderer. This is an OOPIF tool
+boundary, not a Nomi layout or `pointer-events` bug.
+
+Use the project-configured `chrome-devtools` MCP server instead. It connects to
+the existing Chrome session with `--autoConnect` and is the supported surface
+for inspecting the iframe DOM, console, network requests, and interactive
+states. Chrome 144+ must have remote debugging enabled at
+`chrome://inspect/#remote-debugging`, and the agent session must be restarted
+after enabling it. Use the Shopify session signed in as
+`ombarvaliya7@gmail.com`. Do not work around this by disabling site isolation
+or web security. Screenshots remain useful visual evidence, but they are no
+longer the only available signal.
 
 ## What's not done
 

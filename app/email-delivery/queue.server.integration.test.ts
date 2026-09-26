@@ -18,9 +18,9 @@ const initialNow = new Date("2026-08-20T08:00:00.000Z").getTime();
 let database: PrismaTestDatabase;
 let enqueueEmailJob: typeof import("./queue.server").enqueueEmailJob;
 
-async function enableSending(sendReceiptEmails = false) {
+async function enableSending() {
   await database.client.shopSettings.create({
-    data: { shop, sendingEnabled: true, sendReceiptEmails },
+    data: { shop, sendingEnabled: true },
   });
 }
 
@@ -56,8 +56,8 @@ describe("enqueueEmailJob with SQLite", () => {
     const input = {
       webhookId: "webhook-concurrent",
       shop,
-      topic: "FULFILLMENTS_CREATE",
-      payload: { id: 501, order_id: 1042 },
+      topic: "FULFILLMENTS_UPDATE",
+      payload: { id: 501, order_id: 1042, shipment_status: "delivered" },
     };
 
     const outcomes = await Promise.all([
@@ -117,8 +117,8 @@ describe("enqueueEmailJob with SQLite", () => {
     expect(jobs[0].availableAt).toEqual(new Date(initialNow + 75 * 60_000));
   });
 
-  it("persists cart cancellation before applying the receipt-email gate", async () => {
-    await enableSending(false);
+  it("persists cart cancellation without creating an order email", async () => {
+    await enableSending();
     await enqueueEmailJob({
       webhookId: "checkout-update",
       shop,
@@ -133,7 +133,7 @@ describe("enqueueEmailJob with SQLite", () => {
         topic: "ORDERS_CREATE",
         payload: { id: 1042, checkout_token: "checkout-token" },
       }),
-    ).resolves.toBe("disabled");
+    ).resolves.toBe("ignored");
 
     await expect(
       database.client.emailJob.findUniqueOrThrow({

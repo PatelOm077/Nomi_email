@@ -3,7 +3,10 @@ import { action } from "../routes/tasks.email-jobs";
 
 const processPendingEmailJobs = vi.hoisted(() => vi.fn());
 
+const refreshStaleSendingDomains = vi.hoisted(() => vi.fn(async () => ({ refreshed: 1 })));
+
 vi.mock("./process-jobs.server", () => ({ processPendingEmailJobs }));
+vi.mock("./domains.server", () => ({ refreshStaleSendingDomains }));
 
 function workerRequest(authorization?: string) {
   const headers = new Headers();
@@ -68,7 +71,9 @@ describe("tasks.email-jobs action", () => {
       skipped: 1,
       retried: 0,
       failed: 0,
+      domains: { refreshed: 1 },
     });
     expect(processPendingEmailJobs).toHaveBeenCalledOnce();
+    expect(refreshStaleSendingDomains).toHaveBeenCalledOnce();
   });
 });

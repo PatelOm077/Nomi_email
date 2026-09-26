@@ -17,8 +17,8 @@ vi.mock("../db.server", () => ({ default: db }));
 const baseInput = {
   webhookId: "webhook-123",
   shop: "paper-boat.myshopify.com",
-  topic: "FULFILLMENTS_CREATE",
-  payload: { id: 42, order_id: 1042 },
+  topic: "FULFILLMENTS_UPDATE",
+  payload: { id: 42, order_id: 1042, shipment_status: "delivered" },
 };
 
 describe("enqueueEmailJob", () => {
@@ -43,7 +43,6 @@ describe("enqueueEmailJob", () => {
   it("queues an ordinary webhook with a serialized payload", async () => {
     db.shopSettings.findUnique.mockResolvedValue({
       sendingEnabled: true,
-      sendReceiptEmails: false,
     });
     db.emailJob.create.mockResolvedValue({ id: "job-1" });
 
@@ -53,8 +52,12 @@ describe("enqueueEmailJob", () => {
       data: {
         webhookId: "webhook-123",
         shop: "paper-boat.myshopify.com",
-        topic: "FULFILLMENTS_CREATE",
-        payload: JSON.stringify({ id: 42, order_id: 1042 }),
+        topic: "FULFILLMENTS_UPDATE",
+        payload: JSON.stringify({
+          id: 42,
+          order_id: 1042,
+          shipment_status: "delivered",
+        }),
       },
     });
   });
@@ -62,7 +65,6 @@ describe("enqueueEmailJob", () => {
   it("returns duplicate for Prisma's unique-key error", async () => {
     db.shopSettings.findUnique.mockResolvedValue({
       sendingEnabled: true,
-      sendReceiptEmails: false,
     });
     db.emailJob.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
@@ -77,7 +79,6 @@ describe("enqueueEmailJob", () => {
   it("does not swallow non-idempotency database errors", async () => {
     db.shopSettings.findUnique.mockResolvedValue({
       sendingEnabled: true,
-      sendReceiptEmails: false,
     });
     db.emailJob.create.mockRejectedValue(new Error("database unavailable"));
 
@@ -86,11 +87,7 @@ describe("enqueueEmailJob", () => {
     );
   });
 
-  it("cancels pending cart recovery even when receipt emails are disabled", async () => {
-    db.shopSettings.findUnique.mockResolvedValue({
-      sendingEnabled: true,
-      sendReceiptEmails: false,
-    });
+  it("cancels pending cart recovery without creating an order email", async () => {
     db.emailJob.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(
@@ -99,7 +96,7 @@ describe("enqueueEmailJob", () => {
         topic: "ORDERS_CREATE",
         payload: { id: 1042, checkout_token: "checkout-token" },
       }),
-    ).resolves.toBe("disabled");
+    ).resolves.toBe("ignored");
 
     expect(db.emailJob.updateMany).toHaveBeenCalledWith({
       where: {
@@ -108,18 +105,18 @@ describe("enqueueEmailJob", () => {
       },
       data: { status: "skipped", lastError: "Checkout completed." },
     });
+    expect(db.shopSettings.findUnique).not.toHaveBeenCalled();
     expect(db.emailJob.create).not.toHaveBeenCalled();
   });
 
-  it("requires the narrower opt-in for duplicate-risk receipt topics", async () => {
+  it("ignores webhook topics outside lifecycle delivery", async () => {
     db.shopSettings.findUnique.mockResolvedValue({
       sendingEnabled: true,
-      sendReceiptEmails: false,
     });
 
     await expect(
-      enqueueEmailJob({ ...baseInput, topic: "REFUNDS_CREATE" }),
-    ).resolves.toBe("disabled");
+      enqueueEmailJob({ ...baseInput, topic: "PRODUCTS_UPDATE" }),
+    ).resolves.toBe("ignored");
 
     expect(db.emailJob.create).not.toHaveBeenCalled();
   });
@@ -159,7 +156,6 @@ describe("enqueueEmailJob", () => {
   ])("ignores an ineligible checkout with %s", async (_label, payload) => {
     db.shopSettings.findUnique.mockResolvedValue({
       sendingEnabled: true,
-      sendReceiptEmails: false,
     });
 
     await expect(
@@ -173,7 +169,6 @@ describe("enqueueEmailJob", () => {
   it("resets an eligible checkout's stable delayed job", async () => {
     db.shopSettings.findUnique.mockResolvedValue({
       sendingEnabled: true,
-      sendReceiptEmails: false,
     });
     db.emailJob.findUnique.mockResolvedValue({ status: "pending" });
     db.emailJob.upsert.mockResolvedValue({ id: "cart-job" });
@@ -213,7 +208,6 @@ describe("enqueueEmailJob", () => {
   it("does not restart a checkout recovery job that was already sent", async () => {
     db.shopSettings.findUnique.mockResolvedValue({
       sendingEnabled: true,
-      sendReceiptEmails: false,
     });
     db.emailJob.findUnique.mockResolvedValue({ status: "sent" });
 

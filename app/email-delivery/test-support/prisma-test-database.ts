@@ -22,9 +22,20 @@ export async function createPrismaTestDatabase(
     CREATE TABLE "ShopSettings" (
       "shop" TEXT NOT NULL PRIMARY KEY,
       "sendingEnabled" BOOLEAN NOT NULL DEFAULT false,
-      "sendReceiptEmails" BOOLEAN NOT NULL DEFAULT false,
+      "onboardingCompletedAt" DATETIME,
+      "appEmbedVerifiedAt" DATETIME,
       "language" TEXT NOT NULL DEFAULT 'en',
       "tone" TEXT NOT NULL DEFAULT 'warm-plain',
+      "brandLogoUrl" TEXT,
+      "brandPrimaryColor" TEXT,
+      "senderName" TEXT,
+      "senderWebsite" TEXT,
+      "senderCountry" TEXT,
+      "senderProvince" TEXT,
+      "senderCity" TEXT,
+      "senderPostalCode" TEXT,
+      "senderAddress" TEXT,
+      "excludedProductIds" TEXT NOT NULL DEFAULT '[]',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL
     )
@@ -52,6 +63,35 @@ export async function createPrismaTestDatabase(
   await client.$executeRawUnsafe(
     'CREATE INDEX "EmailJob_status_availableAt_idx" ON "EmailJob"("status", "availableAt")',
   );
+  await client.$executeRawUnsafe(`
+    CREATE TABLE "BrandStudioProfile" (
+      "shop" TEXT NOT NULL PRIMARY KEY,
+      "status" TEXT NOT NULL DEFAULT 'new',
+      "evidence" TEXT NOT NULL DEFAULT '{}',
+      "snapshot" TEXT NOT NULL DEFAULT '{}',
+      "audience" TEXT,
+      "feeling" TEXT,
+      "directions" TEXT NOT NULL DEFAULT '[]',
+      "selectedDirectionId" TEXT,
+      "refinement" TEXT,
+      "brandSystem" TEXT NOT NULL DEFAULT '{}',
+      "lifecycleRecipes" TEXT NOT NULL DEFAULT '[]',
+      "renderedEmails" TEXT NOT NULL DEFAULT '{}',
+      "evidenceFingerprint" TEXT NOT NULL DEFAULT '',
+      "snapshotEvidenceFingerprint" TEXT NOT NULL DEFAULT '',
+      "generatedEvidenceFingerprint" TEXT NOT NULL DEFAULT '',
+      "evidenceRefreshedAt" DATETIME,
+      "currentBuildCostMicros" INTEGER NOT NULL DEFAULT 0,
+      "openAiInputTokens" INTEGER NOT NULL DEFAULT 0,
+      "openAiOutputTokens" INTEGER NOT NULL DEFAULT 0,
+      "anthropicInputTokens" INTEGER NOT NULL DEFAULT 0,
+      "anthropicOutputTokens" INTEGER NOT NULL DEFAULT 0,
+      "estimatedCostMicros" INTEGER NOT NULL DEFAULT 0,
+      "completedAt" DATETIME,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL
+    )
+  `);
 
   return {
     client,

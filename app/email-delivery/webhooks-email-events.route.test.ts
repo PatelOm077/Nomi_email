@@ -46,12 +46,12 @@ describe("webhooks.email-events action", () => {
 
   it("passes authenticated Shopify webhook facts to the queue", async () => {
     const request = webhookRequest();
-    const payload = { id: 501, order_id: 1042 };
+    const payload = { id: 501, order_id: 1042, shipment_status: "delivered" };
     mocks.authenticateWebhook.mockResolvedValue({
       payload,
       session: { id: "offline_paper-boat.myshopify.com" },
       shop: "paper-boat.myshopify.com",
-      topic: "FULFILLMENTS_CREATE",
+      topic: "FULFILLMENTS_UPDATE",
       webhookId: "webhook-501",
     });
     mocks.enqueueEmailJob.mockResolvedValue("queued");
@@ -63,7 +63,7 @@ describe("webhooks.email-events action", () => {
     expect(mocks.enqueueEmailJob).toHaveBeenCalledWith({
       webhookId: "webhook-501",
       shop: "paper-boat.myshopify.com",
-      topic: "FULFILLMENTS_CREATE",
+      topic: "FULFILLMENTS_UPDATE",
       payload,
     });
     expect(console.log).toHaveBeenCalledWith(

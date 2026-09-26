@@ -1,6 +1,7 @@
 import { generateEmailHtml } from "./generate-email";
 import { ABANDONED_CART_SKELETON_PROMPT } from "./abandoned-cart-prompt";
 import type { AbandonedCartRecovery } from "./types";
+import { approvedBrandPrompt } from "./brand-identity-prompt";
 
 function buildCartMessage(cart: AbandonedCartRecovery): string {
   const lineItems = cart.lineItems
@@ -23,7 +24,8 @@ ${lineItems}
 Cart total: ${cart.total}
 Recovery URL: ${cart.recoveryUrl}
 
-Invent a tasteful, editorial brand skin for "${cart.shopName}" as described above, since no real brand assets are connected for this shop yet. Return only the finished HTML document.`;
+${approvedBrandPrompt(cart.brandIdentity, cart.shopName)}
+Return only the finished HTML document.`;
 }
 
 export async function generateAbandonedCartEmail(

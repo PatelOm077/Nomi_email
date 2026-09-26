@@ -6,6 +6,8 @@ export default defineConfig({
     include: [
       "app/email-engine/**/*.test.ts",
       "app/email-delivery/**/*.test.ts",
+      "app/dashboard/**/*.test.ts",
+      "app/brand-studio/**/*.test.ts",
       "email-templates/**/*.test.ts",
     ],
     clearMocks: true,

@@ -5,8 +5,8 @@ import {
   type EmailLanguage,
   type EmailLineItem,
   type EmailTone,
-  type OrderConfirmationOrder,
-  type ShippingUpdate,
+  type AbandonedCartRecovery,
+  type ReviewRequest,
 } from "./types";
 
 describe("email engine contracts", () => {
@@ -16,14 +16,14 @@ describe("email engine contracts", () => {
     expect(codes).toEqual([
       "en",
       "es",
-      "fr",
       "de",
-      "it",
+      "fr",
       "pt",
-      "hi",
+      "it",
       "ja",
-      "ko",
+      "nl",
       "zh-CN",
+      "ko",
     ]);
     expect(new Set(codes).size).toBe(codes.length);
     expect(EMAIL_LANGUAGES.every(({ label }) => label.length > 0)).toBe(true);
@@ -44,18 +44,18 @@ describe("email engine contracts", () => {
       price?: string;
       imageUrl?: string | null;
     }>();
-    expectTypeOf<OrderConfirmationOrder>().toMatchTypeOf<{
+    expectTypeOf<AbandonedCartRecovery>().toMatchTypeOf<{
       language: EmailLanguage;
       tone: EmailTone;
       customerFirstName: string | null;
       lineItems: EmailLineItem[];
       total: string;
+      recoveryUrl: string;
     }>();
-    expectTypeOf<ShippingUpdate>().toMatchTypeOf<{
-      trackingNumber: string | null;
-      carrierName: string | null;
-      trackingUrl: string | null;
-      estimatedDelivery: string | null;
+    expectTypeOf<ReviewRequest>().toMatchTypeOf<{
+      orderNumber: string;
+      reviewUrl: string | null;
+      lineItems: EmailLineItem[];
     }>();
   });
 });
