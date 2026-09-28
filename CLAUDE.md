@@ -30,7 +30,7 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
   don't rename it. With it present, `shopify app dev` needs the storefront
   password (`SHOPIFY_FLAG_STORE_PASSWORD`) to run non-interactively.
 - `app/routes/_index/`, `app/routes/auth.login/` — the public install/login
-  flow, required by SingleMerchant distribution. Not the embedded admin
+  flow, required by public (AppStore) distribution. Not the embedded admin
   path, but don't delete them (see Don't touch).
 - `app/email-engine/` — the generation engine. **No Shopify imports allowed
   in this folder** — that boundary is the whole point of it being
@@ -182,9 +182,13 @@ brand skin per shop, never these colors.
 - `.env` — holds `ANTHROPIC_API_KEY` and Shopify secrets. Gitignored;
   never commit it or print its contents back in full.
 - `shopify.server.ts`'s `distribution` must match whatever's selected in
-  the Partner/Dev Dashboard (currently Custom → `AppDistribution.
-  SingleMerchant`, not `ShopifyAdmin`). Changing one without the other
-  breaks auth at process boot — confirmed the hard way.
+  the Partner/Dev Dashboard (currently Public → `AppDistribution.AppStore`
+  for "Nomi Email Marketing", client id ef35bfc0…, config
+  `shopify.app.public.toml`; release with `shopify app deploy --config
+  public`). Changing one without the other breaks auth at process boot —
+  confirmed the hard way. The retired custom "Nomi" app (90627cfe…,
+  `shopify.app.fly.toml`) was SingleMerchant; Fly now holds only the public
+  app's keys.
 - Don't add `read_all_orders` to scopes — Shopify rejects it without a
   separate approval process the CLI can't grant on its own. `read_orders`
   (60-day window) and `read_customers` cover what this app needs today and
