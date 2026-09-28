@@ -4,6 +4,7 @@ import { processPendingEmailJobs } from "../email-delivery/process-jobs.server";
 import { refreshStaleSendingDomains } from "../email-delivery/domains.server";
 import { backupProductionDatabase } from "../email-delivery/backup.server";
 import { processSupportNotifications } from "../support/notifications.server";
+import { purgeExpiredEmailJobs } from "../email-delivery/retention.server";
 
 function authorized(request: Request): boolean {
   const secret = process.env.EMAIL_JOB_SECRET;
@@ -22,5 +23,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // minutes, verified ones daily so a removed record pauses campaigns.
   const domains = await refreshStaleSendingDomains();
   const support = await processSupportNotifications();
-  return Response.json({ ...result, domains, support });
+  const retention = await purgeExpiredEmailJobs();
+  return Response.json({ ...result, domains, support, retention });
 };

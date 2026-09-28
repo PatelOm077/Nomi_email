@@ -11,6 +11,7 @@ vi.mock("./process-jobs.server", () => ({ processPendingEmailJobs }));
 vi.mock("./domains.server", () => ({ refreshStaleSendingDomains }));
 vi.mock("./backup.server", () => ({ backupProductionDatabase: vi.fn(async () => undefined) }));
 vi.mock("../support/notifications.server", () => ({ processSupportNotifications }));
+vi.mock("./retention.server", () => ({ purgeExpiredEmailJobs: vi.fn(async () => ({ purged: 0 })) }));
 
 function workerRequest(authorization?: string) {
   const headers = new Headers();
@@ -77,6 +78,7 @@ describe("tasks.email-jobs action", () => {
       failed: 0,
       domains: { refreshed: 1 },
       support: { sent: 1, configured: true },
+      retention: { purged: 0 },
     });
     expect(processPendingEmailJobs).toHaveBeenCalledOnce();
     expect(refreshStaleSendingDomains).toHaveBeenCalledOnce();
