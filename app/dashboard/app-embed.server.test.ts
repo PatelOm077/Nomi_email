@@ -31,6 +31,16 @@ describe("isNomiEmbedEnabled", () => {
     expect(isNomiEmbedEnabled(banner + JSON.stringify({ current: {} }))).toBe(false);
   });
 
+  it("counts only this app's embed when the app handle is known", () => {
+    const oldAppOnly = settings({ "1": { type: "shopify://apps/nomi/blocks/nomi-script/old", disabled: false } });
+    expect(isNomiEmbedEnabled(oldAppOnly, "nomi-email-marketing")).toBe(false);
+    const both = settings({
+      "1": { type: "shopify://apps/nomi/blocks/nomi-script/old", disabled: false },
+      "2": { type: "shopify://apps/nomi-email-marketing/blocks/nomi-script/new", disabled: false },
+    });
+    expect(isNomiEmbedEnabled(both, "nomi-email-marketing")).toBe(true);
+  });
+
   it("reads a preset-named current", () => {
     const text = JSON.stringify({
       current: "Default",

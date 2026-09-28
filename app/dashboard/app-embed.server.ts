@@ -25,6 +25,11 @@ interface GraphqlAdmin {
 
 const APP_EMBED_THEME_QUERY = `#graphql
   query NomiAppEmbedTheme {
+    currentAppInstallation {
+      app {
+        handle
+      }
+    }
     themes(first: 1, roles: [MAIN]) {
       nodes {
         id
@@ -46,6 +51,7 @@ const APP_EMBED_THEME_QUERY = `#graphql
 
 type ThemeQueryResult = {
   data?: {
+    currentAppInstallation?: { app?: { handle?: string | null } | null } | null;
     themes?: {
       nodes: Array<{
         name: string;
@@ -63,7 +69,10 @@ const EMBED_TYPE_PATTERN = new RegExp(
 
 // settings_data.json ships with a leading /* ... */ banner comment, which
 // JSON.parse rejects. Returns null when the file can't be read as JSON.
-export function isNomiEmbedEnabled(settingsDataText: string): boolean | null {
+// With appHandle, only this app's embed counts (block types are
+// `shopify://apps/<app handle>/blocks/...`), so another Nomi app's leftover
+// embed, like the retired custom "Nomi" app's, doesn't pass the gate.
+export function isNomiEmbedEnabled(settingsDataText: string, appHandle?: string | null): boolean | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(settingsDataText.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, ""));
@@ -82,6 +91,7 @@ export function isNomiEmbedEnabled(settingsDataText: string): boolean | null {
     (block) =>
       typeof block?.type === "string" &&
       EMBED_TYPE_PATTERN.test(block.type) &&
+      (!appHandle || block.type.startsWith(`shopify://apps/${appHandle}/`)) &&
       block.disabled !== true,
   );
 }
@@ -95,7 +105,7 @@ export async function loadAppEmbedStatus(admin: GraphqlAdmin): Promise<AppEmbedS
     const content = theme.files?.nodes[0]?.body?.content;
     // No settings_data.json at all means nothing has ever been enabled.
     if (content === undefined) return { state: "inactive", themeName: theme.name };
-    const enabled = isNomiEmbedEnabled(content);
+    const enabled = isNomiEmbedEnabled(content, json.data?.currentAppInstallation?.app?.handle);
     return {
       state: enabled === null ? "unknown" : enabled ? "active" : "inactive",
       themeName: theme.name,
