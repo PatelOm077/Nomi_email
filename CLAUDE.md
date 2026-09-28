@@ -95,12 +95,17 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
     from the store's or the approved email predates the markup.
 - `app/billing/` — plans and limits. `plans.ts` is the one source of prices
   and allowances (Free $0 one-time trial, Starter $29, Growth $79, Pro $199;
-  extra emails $5 per 500). `usage.server.ts` checks an allowance before any
+  extra emails or subscribed contacts $5 per 500; contacts are Shopify
+  customers subscribed to email marketing, 250 / 1k / 5k / 15k by plan,
+  counted hourly by `contacts.server.ts`; Free pauses sending when over). `usage.server.ts` checks an allowance before any
   AI spend and records it after success; campaigns, single regenerate,
   Regenerate all, the Brand Studio build, and the send worker all call it.
-  Charging goes through Shopify App Pricing (Partner Dashboard plans), which
-  needs the app listed publicly; until then `/app/pricing` switches plans
-  freely on development stores only.
+  Charging goes through Shopify App Pricing: plans live in the Partner
+  Dashboard, "Choose" opens Shopify's hosted plan page, and
+  `shopify-pricing.server.ts` reads the active subscription from the Partner
+  API (needs SHOPIFY_PARTNER_API_ACCESS_TOKEN, SHOPIFY_PARTNER_ORG_ID,
+  SHOPIFY_APP_GID). Plan handles must contain free/starter/growth/pro. Until
+  those are set, `/app/pricing` switches plans on development stores only.
 - `app/support/` — the in-app help chat (`SupportWidget.tsx`, mounted in
   `app.tsx` on every page) and its backend (`api.support.tsx`). Merchant
   questions are answered by Claude (`assistant.server.ts`), grounded on the

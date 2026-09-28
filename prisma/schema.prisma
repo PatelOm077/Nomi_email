@@ -124,6 +124,10 @@ model ShopSettings {
   // enforced from it; charging happens through Shopify App Pricing once the
   // app is listed publicly.
   plan                  String    @default("free")
+  // Email-subscribed customers (plan contact limits), refreshed from
+  // Shopify at most hourly by app/billing/contacts.server.ts.
+  subscribedContacts    Int?
+  contactsCountedAt     DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 }

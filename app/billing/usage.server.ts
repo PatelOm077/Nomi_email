@@ -46,6 +46,23 @@ function limitMessage(plan: Plan, metric: UsageMetric, limit: number): string {
 
 export async function checkAllowance(shop: string, metric: UsageMetric, amount = 1): Promise<Allowance> {
   const plan = await shopPlan(shop);
+  if (metric === "email_sent" && !plan.emailOverage) {
+    // Free includes a set number of subscribed contacts; paid plans keep
+    // sending past theirs (billed per block).
+    const settings = await db.shopSettings.findUnique({ where: { shop }, select: { subscribedContacts: true } });
+    const contacts = settings?.subscribedContacts ?? 0;
+    if (contacts > plan.contacts) {
+      const used = await usedCount(shop, usagePeriod(plan, metric), metric);
+      return {
+        plan,
+        metric,
+        used,
+        limit: plan.limits[metric],
+        allowed: false,
+        message: `Your store has ${contacts.toLocaleString("en-US")} subscribed contacts, over the ${plan.contacts.toLocaleString("en-US")} included in the ${plan.name} plan. Upgrade in Plan & billing to keep sending.`,
+      };
+    }
+  }
   const limit = plan.limits[metric];
   const used = await usedCount(shop, usagePeriod(plan, metric), metric);
   // Paid plans keep sending past their included emails (billed per block).
@@ -82,5 +99,6 @@ export async function usageSummary(shop: string) {
       lifetime: usagePeriod(plan, metric) === "lifetime",
     })),
   );
-  return { plan, rows };
+  const settings = await db.shopSettings.findUnique({ where: { shop }, select: { subscribedContacts: true } });
+  return { plan, rows, contacts: settings?.subscribedContacts ?? null };
 }

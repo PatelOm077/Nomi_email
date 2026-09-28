@@ -7,22 +7,27 @@ import db from "../db.server";
 import {
   EXTRA_EMAILS_BLOCK,
   EXTRA_EMAILS_PRICE_USD,
-  EXTRA_PRICES_USD,
   METRIC_LABELS,
   PLAN_IDS,
   PLANS,
   emailOverageUsd,
+  contactOverageUsd,
+  EXTRA_CONTACTS_BLOCK,
+  EXTRA_CONTACTS_PRICE_USD,
   type Plan,
   type PlanId,
   type UsageMetric,
 } from "../billing/plans";
 import { usageSummary } from "../billing/usage.server";
+import { refreshSubscribedContacts } from "../billing/contacts.server";
+import { planSelectionUrl, shopifyPricingConfigured, syncPlanFromShopify } from "../billing/shopify-pricing.server";
 
 // Plan & billing. Plans and allowances come from app/billing/plans.ts; usage
 // from app/billing/usage.server.ts. Charging goes through Shopify App
-// Pricing, which needs the app listed publicly — until then a development
-// store can switch plans freely (Shopify also makes every plan free on dev
-// stores), and a live store sees that billing opens with the listing.
+// Pricing (billing/shopify-pricing.server.ts): "Choose" opens Shopify's
+// hosted plan page, and Shopify sends the merchant back here with
+// ?plan_handle=, which re-reads the plan. Before that's configured a
+// development store can switch plans here for free.
 // Layout-critical styles are inline on purpose — new classes in nomi.css have
 // failed to apply inside the embedded admin iframe before (see CAMPAIGNS.md).
 
@@ -40,8 +45,20 @@ async function isDevelopmentStore(admin: { graphql: (query: string) => Promise<R
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
+  // Coming back from Shopify's plan page (the plan's welcome link) always re-reads.
+  const returning = new URL(request.url).searchParams.has("plan_handle");
+  await syncPlanFromShopify(session.shop, admin, { force: returning });
+  await refreshSubscribedContacts(session.shop, admin, { force: true });
   const [summary, devStore] = await Promise.all([usageSummary(session.shop), isDevelopmentStore(admin)]);
-  return { planId: summary.plan.id, rows: summary.rows, devStore };
+  const shopifyBilling = shopifyPricingConfigured();
+  return {
+    planId: summary.plan.id,
+    rows: summary.rows,
+    contacts: summary.contacts,
+    devStore,
+    shopifyBilling,
+    planUrl: shopifyBilling ? planSelectionUrl(session.shop) : null,
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -50,6 +67,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const planId = formData.get("plan");
   if (typeof planId !== "string" || !(PLAN_IDS as readonly string[]).includes(planId)) {
     return { ok: false, message: "Choose a valid plan." };
+  }
+  if (shopifyPricingConfigured()) {
+    return { ok: false, message: "Plans change on Shopify’s plan page. Choose a plan above to open it." };
   }
   if (!(await isDevelopmentStore(admin))) {
     return {
@@ -102,8 +122,9 @@ function allowanceLine(plan: Plan, metric: UsageMetric): ReactNode {
   }
   if (limit === null) return <>Unlimited {label.many}</>;
   if (limit === 0) {
-    const extra = EXTRA_PRICES_USD[metric];
-    return <span style={{ color: N600 }}>{label.many[0].toUpperCase() + label.many.slice(1)}: {extra && !plan.lifetimeAllowances ? `${money(extra)} each` : "not included"}</span>;
+    // Add-ons can't be bought yet (Shopify App Pricing sells plans, not
+    // one-off extras), so a zero allowance just reads as not included.
+    return <span style={{ color: N600 }}>{label.one[0].toUpperCase() + label.one.slice(1)}: not included</span>;
   }
   const noun = metric === "email_sent" ? "emails sent" : limit === 1 ? label.one : label.many;
   return <><strong>{fmt(limit)}</strong> {noun}{per}</>;
@@ -119,7 +140,7 @@ function Check() {
   );
 }
 
-function PlanCard({ plan, current, devStore }: { plan: Plan; current: boolean; devStore: boolean }) {
+function PlanCard({ plan, current, devStore, planUrl }: { plan: Plan; current: boolean; devStore: boolean; planUrl: string | null }) {
   const fetcher = useFetcher<typeof action>();
   const busy = fetcher.state !== "idle";
   return (
@@ -137,13 +158,29 @@ function PlanCard({ plan, current, devStore }: { plan: Plan; current: boolean; d
         <p style={{ margin: "8px 0 0", font: `400 13px/1.45 ${SANS}`, color: N700 }}>{plan.blurb}</p>
       </div>
       <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10, font: `400 13.5px/1.4 ${SANS}`, flex: 1 }}>
+        <li style={{ display: "flex", gap: 9 }}><Check /><span>Up to <strong>{fmt(plan.contacts)}</strong> subscribed contacts</span></li>
         {LINE_METRICS.map((metric) => (
           <li key={metric} style={{ display: "flex", gap: 9 }}><Check /><span>{allowanceLine(plan, metric)}</span></li>
         ))}
         {plan.emailOverage ? (
-          <li style={{ display: "flex", gap: 9 }}><Check /><span>More emails: {money(EXTRA_EMAILS_PRICE_USD)}/mo per {fmt(EXTRA_EMAILS_BLOCK)}</span></li>
+          <li style={{ display: "flex", gap: 9 }}><Check /><span>More contacts or emails: {money(EXTRA_CONTACTS_PRICE_USD)}/mo per {fmt(EXTRA_CONTACTS_BLOCK)}</span></li>
         ) : null}
       </ul>
+      {planUrl && !current ? (
+        // Shopify's plan page sits outside the app frame, so it opens on top.
+        <a
+          href={planUrl}
+          target="_top"
+          className="nomi-pricing-cta"
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", width: "100%", minHeight: 44,
+            boxSizing: "border-box", borderRadius: 4, textDecoration: "none",
+            font: `600 14px ${SANS}`, transition: "background .16s ease", background: CYAN, color: "#fff",
+          }}
+        >
+          Choose {plan.name}
+        </a>
+      ) : (
       <fetcher.Form method="post">
         <input type="hidden" name="plan" value={plan.id} />
         <button
@@ -159,6 +196,7 @@ function PlanCard({ plan, current, devStore }: { plan: Plan; current: boolean; d
           {current ? "Your plan" : busy ? "Switching…" : devStore ? `Switch to ${plan.name}` : `Choose ${plan.name}`}
         </button>
       </fetcher.Form>
+      )}
       {fetcher.data?.message ? (
         <p role="status" style={{ margin: 0, font: `400 12.5px/1.45 ${SANS}`, color: fetcher.data.ok ? N700 : MAGENTA }}>{fetcher.data.message}</p>
       ) : null}
@@ -167,10 +205,13 @@ function PlanCard({ plan, current, devStore }: { plan: Plan; current: boolean; d
 }
 
 export default function PricingPage() {
-  const { planId, rows, devStore } = useLoaderData<typeof loader>();
+  const { planId, rows, contacts, devStore, shopifyBilling, planUrl } = useLoaderData<typeof loader>();
   const plan = PLANS[planId as PlanId];
   const emailsSent = rows.find(({ metric }) => metric === "email_sent")?.used ?? 0;
   const overage = emailOverageUsd(plan, emailsSent);
+  const contactCount = contacts ?? 0;
+  const contactExtra = contactOverageUsd(plan, contactCount);
+  const contactsOver = contactCount > plan.contacts;
 
   return (
     <main style={{ minHeight: "100vh", background: "#faf9f9", color: INK, fontFamily: SANS, padding: "26px clamp(16px, 4vw, 30px) 64px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 30 }}>
@@ -186,7 +227,7 @@ export default function PricingPage() {
           Pick the plan that <em style={{ fontStyle: "italic", fontWeight: 400, color: CYAN }}>fits.</em>
         </h1>
         <p style={{ margin: 0, font: `400 14px/1.5 ${SANS}`, color: N700 }}>
-          Every plan gets the full Brand Studio email system, AI campaigns, and all five flows. Plans differ in how much you send and generate.
+          Every plan gets the full Brand Studio email system, AI campaigns, and all five flows. Plans differ in how many contacts you have and how much you send and generate.
         </p>
       </div>
 
@@ -196,6 +237,16 @@ export default function PricingPage() {
           <span style={KICKER}>{plan.lifetimeAllowances ? "FREE PLAN · ONE-TIME ALLOWANCES" : "RESETS ON THE 1ST"}</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px 24px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <span style={{ font: `500 12.5px ${SANS}`, color: N700 }}>Subscribed contacts</span>
+            <span style={{ font: `600 16px ${SANS}` }}>
+              {contacts === null ? "—" : fmt(contactCount)}
+              <span style={{ color: N600, fontWeight: 400 }}> / {fmt(plan.contacts)}</span>
+            </span>
+            <div style={{ height: 4, borderRadius: 2, background: N200, overflow: "hidden" }}>
+              <div style={{ height: 4, width: `${Math.min(100, (contactCount / plan.contacts) * 100)}%`, background: contactsOver ? MAGENTA : CYAN }} />
+            </div>
+          </div>
           {LINE_METRICS.map((metric) => {
             const row = rows.find((candidate) => candidate.metric === metric)!;
             const pct = row.limit ? Math.min(100, (row.used / row.limit) * 100) : 0;
@@ -214,6 +265,13 @@ export default function PricingPage() {
             );
           })}
         </div>
+        {contactsOver ? (
+          <p style={{ margin: 0, font: `400 13px ${SANS}`, color: plan.emailOverage ? N700 : MAGENTA }}>
+            {plan.emailOverage
+              ? `${fmt(contactCount - plan.contacts)} contacts over your plan: ${money(contactExtra)} extra a month.`
+              : `You have more subscribed contacts than Free includes, so sending is paused. Choose a paid plan to keep sending.`}
+          </p>
+        ) : null}
         {overage > 0 ? (
           <p style={{ margin: 0, font: `400 13px ${SANS}`, color: N700 }}>
             {fmt(emailsSent - (plan.limits.email_sent ?? 0))} emails over your plan this month: {money(overage)} extra.
@@ -223,19 +281,18 @@ export default function PricingPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16, maxWidth: 1100 }}>
         {PLAN_IDS.map((id) => (
-          <PlanCard key={id} plan={PLANS[id]} current={id === planId} devStore={devStore} />
+          <PlanCard key={id} plan={PLANS[id]} current={id === planId} devStore={devStore} planUrl={planUrl} />
         ))}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 760, font: `400 12.5px/1.5 ${SANS}`, color: N600 }}>
+        <span>Used up an allowance? Move up a plan any time. Monthly allowances reset on the 1st.</span>
         <span>
-          Used up an allowance? Extras, once billing opens: email regenerate {money(EXTRA_PRICES_USD.email_regenerate!)}, campaign {money(EXTRA_PRICES_USD.campaign!)}, Regenerate all {money(EXTRA_PRICES_USD.regenerate_all!)}.
-          Monthly allowances reset on the 1st.
-        </span>
-        <span>
-          {devStore
-            ? "This is a development store, so you can switch plans freely to test them. Nothing is charged."
-            : "Billing is handled by Shopify and opens once Nomi is listed on the Shopify App Store."}
+          {shopifyBilling
+            ? "Shopify handles billing: plans are charged on your Shopify bill, and you can change or cancel them on Shopify’s plan page."
+            : devStore
+              ? "This is a development store, so you can switch plans freely to test them. Nothing is charged."
+              : "Billing is handled by Shopify and opens once Nomi is listed on the Shopify App Store."}
         </span>
       </div>
     </main>

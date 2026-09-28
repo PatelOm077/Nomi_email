@@ -14,6 +14,7 @@ import { generateNewsletterEmail } from "../email-engine/generate-newsletter-ema
 import { optimizeEmailImageUrl } from "../dashboard/email-image-url.server";
 import { EMAIL_GENERATION_PAUSED } from "../email-engine/generation-status";
 import { NomiDashboard } from "../dashboard/nomi-dashboard";
+import { planFor } from "../billing/plans";
 import { LIFECYCLE_FLOWS, buildLifecycleSlots } from "../dashboard/lifecycle-flow-catalog";
 import type {
   EmailLanguage,
@@ -144,6 +145,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shopName,
     shopDomain: session.shop,
     themeName,
+    plan: (() => {
+      const plan = planFor(settings.plan);
+      return { name: plan.name, priceUsd: plan.priceUsd };
+    })(),
     appEmbed: {
       state: appEmbedStatus?.state ?? "unknown",
       // eslint-disable-next-line no-undef
@@ -826,6 +831,7 @@ export default function Index() {
     delivery,
     brand,
     appEmbed,
+    plan,
   } = useLoaderData<typeof loader>();
   const [language, setLanguage] = useState<EmailLanguage>(
     resolveDashboardLanguage(delivery.language),
@@ -850,7 +856,6 @@ export default function Index() {
     setExpandedFlowId(flow.id);
     setSelectedTemplateId(flow.templateIds[0]);
   }, [initialFlowId]);
-  const [trialStarted, setTrialStarted] = useState(false);
   // The preview panel otherwise depends entirely on `brand.previewHtmlById`
   // from the route loader being revalidated after a successful regenerate.
   // That revalidation is a plain GET behind whatever sits in front of this
@@ -927,10 +932,6 @@ export default function Index() {
         ? `${generatedCount} emails ready`
         : "Brand Studio build required";
 
-  const startTrial = () => {
-    setTrialStarted(true);
-  };
-
   if (showOnboarding === null) {
     return <main className="nomi-onboarding" aria-label="Loading setup" />;
   }
@@ -977,8 +978,7 @@ export default function Index() {
         sendingEnabled={delivery.sendingEnabled}
         appEmbed={appEmbed}
         providerConfigured={delivery.providerConfigured}
-        trialStarted={trialStarted}
-        onStartTrial={startTrial}
+        plan={plan}
         onToggleSending={() =>
           deliveryFetcher.submit(
             { payload: JSON.stringify({ kind: "set-sending", enabled: !delivery.sendingEnabled }) },
@@ -1067,12 +1067,10 @@ export default function Index() {
           <article className="nomi-reference-activation-card is-trial">
             <div className="nomi-reference-activation-title">
               <span aria-hidden="true">!</span>
-              <strong>Activate your account to start sending emails</strong>
+              <strong>You’re on the {plan.name} plan</strong>
             </div>
-            <p>Start your 7-day free trial to enable email sending to your customers.</p>
-            <button type="button" disabled={trialStarted} onClick={startTrial}>
-              {trialStarted ? "Trial Started" : "Start Free Trial"}
-            </button>
+            <p>See what you’ve used and what each plan includes. Upgrade or downgrade any time.</p>
+            <Link className="nomi-reference-activation-link" to="/app/pricing">See plans</Link>
           </article>
 
           <article className="nomi-reference-activation-card is-flows">

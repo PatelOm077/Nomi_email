@@ -85,6 +85,23 @@ describe("plan limits with SQLite", () => {
     expect((await usage.checkAllowance(shop, "email_sent")).allowed).toBe(true);
   });
 
+  it("pauses Free sending over 250 subscribed contacts but lets paid plans keep sending", async () => {
+    await database.client.shopSettings.upsert({
+      where: { shop },
+      create: { shop, plan: "free", subscribedContacts: 251 },
+      update: { plan: "free", subscribedContacts: 251 },
+    });
+    const free = await usage.checkAllowance(shop, "email_sent");
+    expect(free.allowed).toBe(false);
+    expect(free.message).toContain("251 subscribed contacts");
+
+    await database.client.shopSettings.update({ where: { shop }, data: { subscribedContacts: 250 } });
+    expect((await usage.checkAllowance(shop, "email_sent")).allowed).toBe(true);
+
+    await database.client.shopSettings.update({ where: { shop }, data: { plan: "starter", subscribedContacts: 4_000 } });
+    expect((await usage.checkAllowance(shop, "email_sent")).allowed).toBe(true);
+  });
+
   it("summarises usage against the current plan", async () => {
     await onPlan("growth");
     await usage.recordUsage(shop, "campaign", 4);
@@ -96,6 +113,14 @@ describe("plan limits with SQLite", () => {
 });
 
 describe("plan pricing", () => {
+  it("bills $5 per started block of 500 extra contacts on paid plans only", async () => {
+    const { contactOverageUsd } = await import("./plans");
+    expect(contactOverageUsd(PLANS.starter, 1_000)).toBe(0);
+    expect(contactOverageUsd(PLANS.starter, 1_001)).toBe(5);
+    expect(contactOverageUsd(PLANS.growth, 6_000)).toBe(10);
+    expect(contactOverageUsd(PLANS.free, 900)).toBe(0);
+    expect([PLANS.free, PLANS.starter, PLANS.growth, PLANS.pro].map(({ contacts }) => contacts)).toEqual([250, 1_000, 5_000, 15_000]);
+  });
   it("charges $5 per started block of 500 extra emails on paid plans only", () => {
     expect(emailOverageUsd(PLANS.starter, 3_000)).toBe(0);
     expect(emailOverageUsd(PLANS.starter, 3_001)).toBe(5);
@@ -107,5 +132,16 @@ describe("plan pricing", () => {
     expect([PLANS.free, PLANS.starter, PLANS.growth, PLANS.pro].map(({ priceUsd }) => priceUsd)).toEqual([0, 29, 79, 199]);
     expect([PLANS.free, PLANS.starter, PLANS.growth, PLANS.pro].map(({ limits }) => limits.campaign)).toEqual([3, 10, 20, 40]);
     expect(PLANS.free.limits).toMatchObject({ brand_build: 1, email_regenerate: 3, email_sent: 500 });
+  });
+});
+
+describe("Shopify App Pricing plan handles", () => {
+  it("maps plan handles from the Partner Dashboard to Nomi plans", async () => {
+    const { planIdFromHandles } = await import("./plans");
+    expect(planIdFromHandles(["growth"])).toBe("growth");
+    expect(planIdFromHandles(["nomi_pro_monthly"])).toBe("pro");
+    expect(planIdFromHandles(["Starter-Plan", "extra-emails"])).toBe("starter");
+    expect(planIdFromHandles(["progress"])).toBeNull();
+    expect(planIdFromHandles([])).toBeNull();
   });
 });

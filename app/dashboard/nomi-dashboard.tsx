@@ -60,8 +60,7 @@ export function NomiDashboard({
   sendingEnabled,
   appEmbed,
   providerConfigured,
-  trialStarted,
-  onStartTrial,
+  plan,
   onToggleSending,
 }: {
   shopName: string;
@@ -74,8 +73,7 @@ export function NomiDashboard({
   sendingEnabled: boolean;
   appEmbed: { state: "active" | "inactive" | "unknown"; editorUrl: string };
   providerConfigured: boolean;
-  trialStarted: boolean;
-  onStartTrial: () => void;
+  plan: { name: string; priceUsd: number };
   onToggleSending: () => void;
 }) {
   const completedSteps = 1 + Number(sendingEnabled) + Number(generatedCount > 0);
@@ -140,12 +138,10 @@ export function NomiDashboard({
 
         <section className="nomi-dashboard-trial" aria-label="Account activation">
           <div>
-            <strong>Activate your account to start sending emails</strong>
-            <p>Start your 7-day free trial to enable email sending to your customers.</p>
+            <strong>You’re on the {plan.name} plan</strong>
+            <p>See what you’ve used and what each plan includes. Upgrade or downgrade any time.</p>
           </div>
-          <button type="button" onClick={onStartTrial} disabled={trialStarted}>
-            {trialStarted ? "Trial started" : "Start free trial"}
-          </button>
+          <Link className="nomi-dashboard-plan-link" to="/app/pricing">See plans</Link>
         </section>
 
         <section className="nomi-dashboard-metrics" aria-label="Email performance">
@@ -153,7 +149,12 @@ export function NomiDashboard({
           <div className="nomi-dashboard-primary-metrics">
             <Metric label="Attributed revenue" value={formatMoney(totals.value, money, 0)} accent />
             <Metric label="Conversions" value={String(totals.conversions)} />
-            <Metric label="ROI" value="0x" />
+            <Metric
+              label="ROI"
+              // Attributed revenue per dollar of Nomi's price; only when the store
+              // sells in USD, so the two amounts are the same currency.
+              value={plan.priceUsd > 0 && money === "USD" ? `${(totals.value / plan.priceUsd).toFixed(1)}x` : "—"}
+            />
           </div>
           <div className="nomi-dashboard-secondary-metrics">
             <Metric label="Emails sent" value={String(totals.sent)} compact />

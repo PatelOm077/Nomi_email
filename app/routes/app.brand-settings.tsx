@@ -202,6 +202,7 @@ function PlanPanel({ planId }: { planId: string }) {
   const emails = plan.limits.email_sent ?? 0;
   const campaigns = plan.limits.campaign ?? 0;
   const facts = [
+    [plan.contacts.toLocaleString("en-US"), "subscribed contacts included"],
     [emails.toLocaleString("en-US"), "emails a month included"],
     [String(campaigns), plan.lifetimeAllowances ? "AI campaigns to try" : "AI campaigns a month"],
     ["5 of 5", "lifecycle flows unlocked"],

@@ -4,7 +4,6 @@ import { getAnthropicClient } from "../email-engine/anthropic-client";
 import {
   EXTRA_EMAILS_BLOCK,
   EXTRA_EMAILS_PRICE_USD,
-  EXTRA_PRICES_USD,
   METRIC_LABELS,
   PLANS,
   planFor,
@@ -42,13 +41,10 @@ function plansText() {
       const period = plan.lifetimeAllowances
         ? "one-time allowances, except emails which are monthly"
         : "monthly allowances";
-      return `- ${plan.name}: $${plan.priceUsd}/month. ${limits} (${period}). ${plan.blurb}`;
+      return `- ${plan.name}: $${plan.priceUsd}/month. Up to ${plan.contacts.toLocaleString("en-US")} subscribed contacts; ${limits} (${period}). ${plan.blurb}`;
     })
     .join("\n");
-  const extras = Object.entries(EXTRA_PRICES_USD)
-    .map(([metric, price]) => `${METRIC_LABELS[metric as keyof typeof METRIC_LABELS].one} $${price}`)
-    .join(", ");
-  return `${plans}\nPaid plans keep sending past their included emails at $${EXTRA_EMAILS_PRICE_USD} per extra ${EXTRA_EMAILS_BLOCK} emails a month; Free stops sending at its limit. Add-ons after a monthly allowance runs out: ${extras}. Plans are chosen on the Plan & billing page (/app/pricing). Charging runs through Shopify once Nomi is listed on the Shopify App Store; until then paid plans can't be bought on a live store.`;
+  return `${plans}\nContacts means customers subscribed to email marketing. Paid plans keep working past their included contacts and emails at $${EXTRA_EMAILS_PRICE_USD} per extra ${EXTRA_EMAILS_BLOCK} contacts or emails a month; Free pauses sending when it has more subscribed contacts or sent emails than it includes. When an allowance runs out, the merchant can move up a plan; one-off add-ons can't be bought. Plans are chosen on the Plan & billing page (/app/pricing). Charging runs through Shopify once Nomi is listed on the Shopify App Store; until then paid plans can't be bought on a live store.`;
 }
 
 const SYSTEM_PROMPT = `You are Nomi's in-app help assistant. Nomi is a Shopify app that designs a store's lifecycle emails with AI: "Install it, and your store's email is done." You talk to the merchant who owns the store, inside the Nomi app in their Shopify admin.
@@ -107,6 +103,7 @@ async function storeFacts(shop: string, client: PrismaClient) {
   );
   return [
     `Store: ${shop}`,
+    `Subscribed contacts: ${settings?.subscribedContacts ?? "not counted yet"} of ${plan.contacts.toLocaleString("en-US")} included.`,
     `Plan: ${plan.name}. Used ${plan.lifetimeAllowances ? "in total (Free allowances are one-time and never reset; only emails reset monthly)" : "this month"}: ${usage.join("; ")}.`,
     `Theme app embed: ${settings?.appEmbedVerifiedAt ? "on" : "not confirmed"}.`,
     `Sending: ${settings?.sendingEnabled ? "on" : "off"}.`,

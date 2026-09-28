@@ -11,6 +11,8 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { NomiRouteErrorBoundary } from "../dashboard/route-error-fallback";
 import { loadAppEmbedStatus } from "../dashboard/app-embed.server";
+import { syncPlanFromShopify } from "../billing/shopify-pricing.server";
+import { refreshSubscribedContacts } from "../billing/contacts.server";
 import { templatesEnabled } from "../dashboard/reference-looks.server";
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
@@ -34,6 +36,11 @@ const SETUP_PATH = "/app/setup";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
+
+  // Keeps the plan the usage limits read in step with the store's Shopify
+  // subscription (cached per shop; a no-op until App Pricing is configured).
+  await syncPlanFromShopify(session.shop, admin);
+  await refreshSubscribedContacts(session.shop, admin);
 
   // Theme setup gate: nothing else in Nomi opens until the "Nomi Script"
   // app embed is on in the live theme. Once seen, the verified flag skips

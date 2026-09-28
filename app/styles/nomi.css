@@ -754,6 +754,7 @@
   line-height: 1.5;
 }
 .nomi-reference-activation-card button,
+.nomi-reference-activation-link,
 .nomi-reference-activation-actions a {
   min-height: 44px;
   box-sizing: border-box;
@@ -4721,8 +4722,13 @@ a.nomi-dashboard-check-row:hover .nomi-dashboard-check-copy strong { color: #007
 }
 .nomi-dashboard-trial strong { font-size: 15px; }
 .nomi-dashboard-trial p { margin: 8px 0 0; color: #697176; font-size: 12px; }
-.nomi-dashboard-trial button {
+.nomi-dashboard-trial button,
+.nomi-dashboard-plan-link {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  text-decoration: none;
   min-height: 44px;
   padding: 10px 16px;
   color: #fff;

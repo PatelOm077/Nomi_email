@@ -60,8 +60,8 @@ export const supportGuides = [
     title: "Plans and billing",
     category: "Account",
     keywords:
-      "price pricing billing plan cost charge subscription payment refund",
-    body: "Nomi has four plans:\n\n1. Free, $0: one Brand Studio build, 3 email regenerates and 3 campaigns in total, and 500 emails a month.\n2. Starter, $29 a month: 15 regenerates, 10 campaigns, and 3,000 emails a month.\n3. Growth, $79 a month: 30 regenerates, 1 Regenerate all, 20 campaigns, and 15,000 emails a month.\n4. Pro, $199 a month: 75 regenerates, 3 Regenerate alls, 40 campaigns, and 50,000 emails a month.\n\nPaid plans keep sending past their emails at $5 per extra 500. Open Plan & billing to see what you’ve used. For a refund or a billing question, choose Talk to the team.",
+      "price pricing billing plan cost charge subscription payment refund contacts limit",
+    body: "Nomi has four plans. Contacts are customers subscribed to email marketing.\n\n1. Free, $0: up to 250 contacts and 500 emails a month, plus one Brand Studio build, 3 email regenerates and 3 campaigns in total.\n2. Starter, $29 a month: up to 1,000 contacts, 3,000 emails, 15 regenerates and 10 campaigns a month.\n3. Growth, $79 a month: up to 5,000 contacts, 15,000 emails, 30 regenerates, 1 Regenerate all and 20 campaigns a month.\n4. Pro, $199 a month: up to 15,000 contacts, 50,000 emails, 75 regenerates, 3 Regenerate alls and 40 campaigns a month.\n\nPaid plans keep working past their contacts and emails at $5 per extra 500. Open Plan & billing to see what you’ve used. For a refund or a billing question, choose Talk to the team.",
     href: "/app/pricing",
     action: "Open Plan & billing",
   },

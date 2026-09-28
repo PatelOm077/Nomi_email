@@ -71,7 +71,7 @@ function mapProductNode(node: ProductNode): CampaignCatalogProduct {
     title: node.title,
     imageUrl: node.featuredMedia?.preview?.image?.url ?? null,
     price: node.priceRangeV2?.minVariantPrice
-      ? `${node.priceRangeV2.minVariantPrice.currencyCode} ${node.priceRangeV2.minVariantPrice.amount}`
+      ? formatPrice(node.priceRangeV2.minVariantPrice.amount, node.priceRangeV2.minVariantPrice.currencyCode)
       : "",
     productUrl: node.onlineStoreUrl ?? null,
     ...(node.productType !== undefined ? { productType: node.productType?.trim() || null } : {}),
@@ -410,5 +410,16 @@ export async function uploadImageBufferToShopify(
     return null;
   } catch {
     return null;
+  }
+}
+
+// "$52.00" / "€52.00", not the raw "USD 52.0" Shopify's amount string gives.
+export function formatPrice(amount: string, currencyCode: string): string {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return `${currencyCode} ${amount}`;
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currencyCode }).format(value);
+  } catch {
+    return `${currencyCode} ${value.toFixed(2)}`;
   }
 }

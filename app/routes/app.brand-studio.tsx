@@ -972,7 +972,7 @@ export function BrandStudioView({
               <div className="nomi-brand-replay-note">
                 <strong>Replay mode</strong>
                 <span>
-                  Using your saved Brand System. No AI budget will be spent.
+                  Using your saved Brand System. Nothing is regenerated.
                 </span>
               </div>
             ) : null}
@@ -1237,12 +1237,6 @@ function OpeningProgress({
             {index === activeRail ? <i /> : null}
           </span>
         ))}
-      </div>
-      <div className="nomi-make-progress-budget">
-        <span>Generation budget</span>
-        <strong>
-          {formatCost(cost)} <small>spent</small>
-        </strong>
       </div>
     </nav>
   );
@@ -2030,10 +2024,6 @@ function CompleteStep({
           <div>
             <dt>Body</dt>
             <dd>{brandSystem.typography.body}</dd>
-          </div>
-          <div>
-            <dt>Setup cost</dt>
-            <dd>{formatCost(cost)}</dd>
           </div>
         </dl>
         <section>

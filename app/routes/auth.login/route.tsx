@@ -1,49 +1,41 @@
-import { AppProvider } from "@shopify/shopify-app-react-router/react";
-import { useState } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, useActionData, useLoaderData } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 
 import { login } from "../../shopify.server";
-import { loginErrorMessage } from "./error.server";
 
+// Merchants never type their shop's domain (App Store requirement 2.3.1):
+// Shopify opens Nomi from the admin or the App Store with ?shop= already set,
+// and login() sends that straight on to authentication. Without it there's
+// nothing to ask, so the page just says where to open Nomi.
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const errors = loginErrorMessage(await login(request));
-
-  return { errors };
-};
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const errors = loginErrorMessage(await login(request));
-
-  return {
-    errors,
-  };
+  if (new URL(request.url).searchParams.get("shop")) await login(request);
+  return null;
 };
 
 export default function Auth() {
-  const loaderData = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
-  const [shop, setShop] = useState("");
-  const { errors } = actionData || loaderData;
-
   return (
-    <AppProvider embedded={false}>
-      <s-page>
-        <Form method="post">
-        <s-section heading="Log in">
-          <s-text-field
-            name="shop"
-            label="Shop domain"
-            details="example.myshopify.com"
-            value={shop}
-            onChange={(e) => setShop(e.currentTarget.value)}
-            autocomplete="on"
-            error={errors.shop}
-          ></s-text-field>
-          <s-button type="submit">Log in</s-button>
-        </s-section>
-        </Form>
-      </s-page>
-    </AppProvider>
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: "24px 16px",
+        background: "#f3f2f2",
+        color: "#201e1d",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      }}
+    >
+      <div style={{ maxWidth: 440 }}>
+        <p style={{ margin: "0 0 10px", fontSize: 12, letterSpacing: ".12em", textTransform: "uppercase", color: "#6b6765" }}>
+          Nomi
+        </p>
+        <h1 style={{ margin: "0 0 12px", fontFamily: "'Source Serif 4', Georgia, serif", fontWeight: 500, fontSize: 34, lineHeight: 1.15 }}>
+          Open Nomi from your Shopify admin.
+        </h1>
+        <p style={{ margin: 0, fontSize: 16, lineHeight: 1.6, color: "#48443f" }}>
+          Nomi runs inside Shopify. Find it under Apps in your store’s admin, or install Nomi Email Marketing from
+          the Shopify App Store.
+        </p>
+      </div>
+    </main>
   );
 }

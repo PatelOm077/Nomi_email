@@ -1,3 +1,4 @@
+import { formatPrice } from "../dashboard/campaign-catalog.server";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { ActionFunctionArgs, LinksFunction, LoaderFunctionArgs } from "react-router";
@@ -367,7 +368,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     catalogProducts = products.map((product) => ({
       id: product.id,
       name: product.title,
-      price: product.priceRangeV2?.minVariantPrice ? `${product.priceRangeV2.minVariantPrice.currencyCode} ${product.priceRangeV2.minVariantPrice.amount}` : null,
+      price: product.priceRangeV2?.minVariantPrice ? formatPrice(product.priceRangeV2.minVariantPrice.amount, product.priceRangeV2.minVariantPrice.currencyCode) : null,
       url: product.onlineStoreUrl ?? null,
       imageSrc: product.featuredMedia?.image?.url ?? null,
       imageAlt: product.featuredMedia?.image?.altText || product.title,
