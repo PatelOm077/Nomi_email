@@ -207,20 +207,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const firstName = String(form.get("firstName") ?? "").trim();
   const lastName = String(form.get("lastName") ?? "").trim();
   const email = String(form.get("email") ?? "").trim().toLowerCase();
-  const phone = String(form.get("phone") ?? "").trim();
   const subscribed = form.get("subscribed") === "on";
 
   if (!email || email.length > 254 || !/^\S+@\S+\.\S+$/.test(email)) {
     return data({ error: "Enter a valid email address." }, { status: 422 });
   }
-  if (firstName.length > 255 || lastName.length > 255 || phone.length > 32) {
-    return data({ error: "Keep names under 256 characters and the phone number under 33 characters." }, { status: 422 });
+  if (firstName.length > 255 || lastName.length > 255) {
+    return data({ error: "Keep names under 256 characters." }, { status: 422 });
   }
 
+  // Name and email only: Nomi's protected customer data access covers those
+  // two fields, not phone or address.
   const input: Record<string, unknown> = { email };
   if (firstName) input.firstName = firstName;
   if (lastName) input.lastName = lastName;
-  if (phone) input.phone = phone;
   if (subscribed) {
     input.emailMarketingConsent = {
       marketingState: "SUBSCRIBED",
@@ -456,7 +456,6 @@ export default function ContactsPage() {
               {actionData?.error ? <p className="nomi-form-error" role="alert">{actionData.error}</p> : null}
               <div className="nomi-dialog-field-row"><label><span>First name</span><input name="firstName" maxLength={255} autoComplete="given-name" /></label><label><span>Last name</span><input name="lastName" maxLength={255} autoComplete="family-name" /></label></div>
               <label><span>Email</span><input name="email" type="email" maxLength={254} required autoComplete="email" /></label>
-              <label><span>Phone <small>Optional</small></span><input name="phone" type="tel" maxLength={32} autoComplete="tel" /></label>
               <label className="nomi-dialog-checkbox"><input name="subscribed" type="checkbox" /><span>This person gave permission to receive marketing email.</span></label>
               <footer><button type="button" className="nomi-dialog-secondary" onClick={() => setShowAddContact(false)} disabled={isCreating}>Cancel</button><button className="nomi-dialog-primary" disabled={isCreating}>{isCreating ? "Adding…" : "Add contact"}</button></footer>
             </Form>

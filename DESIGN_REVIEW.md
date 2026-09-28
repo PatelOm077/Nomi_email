@@ -2447,3 +2447,7 @@ with Back / Next / Finish replay and clickable step tabs.
 - Finished the support chat Codex started. Questions are now answered by Claude, using the Help library, the plans and the shop's live state; team replies email the merchant, and a magenta dot on the launcher marks an unread team reply. The empty chat now opens at its welcome heading instead of scrolled to the bottom.
 - Checked live at `nomi-email.fly.dev` in the Shopify admin (Chrome) at 1920 / 768 / 375. Asked "Why haven't any of my abandoned cart emails gone out yet?": the answer arrived in about 3 s and used Lumen's real unsent-email record. Panel, composer, Talk to the team and Close stay fully visible at every width, with no horizontal scroll.
 - Screenshots: `screenshots/support-ai-desktop-open.png`, `support-ai-desktop-answer.png`, `support-ai-tablet.png`, `support-ai-mobile.png`.
+
+## 2026-09-28 — Contacts: phone removed from Add a contact (live on Fly)
+- Nomi only requests Name and Email protected customer fields for the public app, so the optional Phone field is gone from the dialog and the action no longer sends `phone`.
+- Checked live in Chrome at desktop: the dialog shows First/Last name, Email, and the consent checkbox, with Cancel/Add contact fully visible. Screenshot: `screenshots/contacts-add-no-phone-desktop.png`.
