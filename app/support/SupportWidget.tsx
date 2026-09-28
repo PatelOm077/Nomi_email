@@ -104,6 +104,18 @@ export function SupportWidget() {
     }, 15000);
     return () => window.clearInterval(timer);
   }, [open, load]);
+  // Other screens open the chat (optionally on the Talk to the team form)
+  // with window.dispatchEvent(new CustomEvent("nomi:open-support")).
+  useEffect(() => {
+    const openSupport = (event: Event) => {
+      setOpen(true);
+      setTab("messages");
+      if ((event as CustomEvent<{ contact?: boolean }>).detail?.contact) setContact(true);
+    };
+    window.addEventListener("nomi:open-support", openSupport);
+    return () => window.removeEventListener("nomi:open-support", openSupport);
+  }, []);
+
   // Closed, Nomi still checks for a team reply so the launcher can show it.
   useEffect(() => {
     if (open) return;

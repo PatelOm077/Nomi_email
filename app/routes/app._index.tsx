@@ -1093,7 +1093,15 @@ export default function Index() {
               >
                 {delivery.sendingEnabled ? "Activated" : "Activate"}
               </button>
-              <a href="mailto:support@nomi.email">▢&nbsp; Talk to support</a>
+              <a
+                href="#support"
+                onClick={(event) => {
+                  event.preventDefault();
+                  window.dispatchEvent(new CustomEvent("nomi:open-support", { detail: { contact: true } }));
+                }}
+              >
+                ▢&nbsp; Talk to support
+              </a>
             </div>
           </article>
         </section>

@@ -2451,3 +2451,10 @@ with Back / Next / Finish replay and clickable step tabs.
 ## 2026-09-28 — Contacts: phone removed from Add a contact (live on Fly)
 - Nomi only requests Name and Email protected customer fields for the public app, so the optional Phone field is gone from the dialog and the action no longer sends `phone`.
 - Checked live in Chrome at desktop: the dialog shows First/Last name, Email, and the consent checkbox, with Cancel/Add contact fully visible. Screenshot: `screenshots/contacts-add-no-phone-desktop.png`.
+
+## 2026-09-29 — App Store readiness pass (live on Fly)
+- Dashboard and Flow Editor: the fake "Start your 7-day free trial" card is now "You’re on the {plan} plan · See plans"; ROI shows "—" unless it can be computed in one currency. Checked live at desktop: `screenshots/dashboard-plan-card-desktop.png`.
+- Pricing: plans list subscribed contacts (250 / 1k / 5k / 15k) and a contacts usage bar; unpurchasable add-on prices removed. Checked live at 1600, 768 and 375: `screenshots/listing/raw-pricing.png`, `pricing-contacts-tablet.png`, `pricing-contacts-mobile.png`.
+- Brand Studio no longer shows the AI generation cost to merchants (checked live, `screenshots/listing/raw-brand-studio.png`).
+- Flow Editor "Talk to support" now opens the Nomi help chat on the team form instead of a mailto to a non-existent address. Deployed and tested, not yet clicked in Chrome (Chrome was closed).
+- App Store listing images: 1600×900 feature image and five screenshots plus a 1200×1200 icon, built on the design canvas from live captures, in `screenshots/listing/final/`.
