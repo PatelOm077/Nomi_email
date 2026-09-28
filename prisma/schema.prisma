@@ -42,6 +42,18 @@ model SupportNotification {
   @@index([status, availableAt])
 }
 
+// Who opened or changed support data (merchant contact details), for the
+// protected customer data access log. Kept one year.
+model AccessLog {
+  id     String   @id @default(cuid())
+  at     DateTime @default(now())
+  actor  String
+  action String
+  target String?
+
+  @@index([at])
+}
+
 model SupportMessage {
   id             String @id @default(cuid())
   conversationId String

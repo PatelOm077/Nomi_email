@@ -11,5 +11,8 @@ export async function purgeExpiredEmailJobs(client: PrismaClient = db, now = new
   const { count } = await client.emailJob.deleteMany({
     where: { createdAt: { lt: cutoff }, status: { notIn: ["pending", "processing"] } },
   });
-  return { purged: count };
+  const logs = await client.accessLog.deleteMany({
+    where: { at: { lt: new Date(now.getTime() - 365 * 86_400_000) } },
+  });
+  return { purged: count, accessLogsPurged: logs.count };
 }

@@ -42,6 +42,15 @@ export async function createPrismaTestDatabase(
     )
   `);
   await client.$executeRawUnsafe(`
+    CREATE TABLE "AccessLog" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "actor" TEXT NOT NULL,
+      "action" TEXT NOT NULL,
+      "target" TEXT
+    )
+  `);
+  await client.$executeRawUnsafe(`
     CREATE TABLE "UsageCounter" (
       "shop" TEXT NOT NULL,
       "period" TEXT NOT NULL,

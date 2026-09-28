@@ -31,6 +31,12 @@ export const links: LinksFunction = () => [
     href: "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;500;600&display=swap",
   },
 ];
+// Every look at or change to support data is recorded (protected customer
+// data access log). A log failure never blocks the operator.
+async function logAccess(request: Request, action: string, target?: string) {
+  const actor = request.headers.get("fly-client-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  await db.accessLog.create({ data: { actor: `operator@${actor}`, action, target } }).catch(() => undefined);
+}
 const noStore = {
   "Cache-Control": "no-store",
   "X-Robots-Tag": "noindex, nofollow",
@@ -47,6 +53,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       { headers: noStore },
     );
   const id = new URL(request.url).searchParams.get("id");
+  await logAccess(request, id ? "view-conversation" : "view-inbox", id ?? undefined);
   const conversations = await db.supportConversation.findMany({
     where: { status: { not: "automated" } },
     orderBy: { updatedAt: "desc" },
@@ -100,7 +107,9 @@ export async function action({ request }: ActionFunctionArgs) {
   const form = await request.formData();
   const intent = form.get("intent");
   if (intent === "login") {
-    if (!validOperatorPassword(String(form.get("password") ?? "")))
+    const valid = validOperatorPassword(String(form.get("password") ?? ""));
+    await logAccess(request, valid ? "sign-in" : "sign-in-failed");
+    if (!valid)
       return Response.json(
         { error: "The access key is invalid." },
         { status: 401, headers: noStore },
@@ -127,6 +136,7 @@ export async function action({ request }: ActionFunctionArgs) {
       { error: "Conversation not found." },
       { status: 404, headers: noStore },
     );
+  await logAccess(request, String(intent), id);
   if (intent === "reply") {
     const body = z.string().trim().min(1).max(4000).safeParse(form.get("body"));
     const requestId = z.uuid().safeParse(form.get("requestId"));

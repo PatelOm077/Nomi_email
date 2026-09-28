@@ -28,7 +28,7 @@ describe("email job retention", () => {
     await job("old-pending", "pending", old);
     await job("recent-sent", "sent", recent);
 
-    expect(await purgeExpiredEmailJobs(database.client, now)).toEqual({ purged: 2 });
+    expect(await purgeExpiredEmailJobs(database.client, now)).toEqual({ purged: 2, accessLogsPurged: 0 });
     const left = await database.client.emailJob.findMany({ select: { webhookId: true }, orderBy: { webhookId: "asc" } });
     expect(left.map(({ webhookId }) => webhookId)).toEqual(["old-pending", "recent-sent"]);
   });
