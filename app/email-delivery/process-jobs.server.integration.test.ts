@@ -76,6 +76,7 @@ describe("processPendingEmailJobs with SQLite", () => {
       generateAbandonedCartEmail: external.generateAbandonedCartEmail,
     }));
     vi.doMock("./provider.server", () => ({ sendEmail: external.sendEmail }));
+    vi.doMock("./config.server", () => ({ getEmailDeliveryConfig: () => ({ fromEmail: "mail@example.com", fromName: "Nomi" }) }));
     ({ processPendingEmailJobs } = await import("./process-jobs.server"));
   });
 
@@ -149,5 +150,37 @@ describe("processPendingEmailJobs with SQLite", () => {
       attempts: 5,
       lastError: "provider unavailable",
     });
+  });
+
+  it("recovers a crashed send using its identical saved body without regenerating", async () => {
+    const job = await createPendingReviewJob();
+    const delivery = { to: "mina@example.com", subject: "Saved subject", html: "<html>saved</html>", from: "Nomi <hello@example.com>", idempotencyKey: "review:stable", headers: {} };
+    await database.client.emailJob.update({ where: { id: job.id }, data: {
+      status: "processing", attempts: 1, preparedEmail: JSON.stringify(delivery),
+      deliveryStartedAt: new Date(fixedNow - 60_000), updatedAt: new Date(fixedNow - 20 * 60_000),
+    } });
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
+    expect(external.sendEmail).toHaveBeenCalledWith(delivery);
+    expect(external.generateReviewRequestEmail).not.toHaveBeenCalled();
+  });
+
+  it("requires review instead of resending after the idempotency window", async () => {
+    const job = await createPendingReviewJob();
+    await database.client.emailJob.update({ where: { id: job.id }, data: {
+      deliveryStartedAt: new Date(fixedNow - 24 * 60 * 60_000),
+    } });
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ failed: 1 });
+    expect(external.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("does not revive a canceled job when generation fails", async () => {
+    const job = await createPendingReviewJob();
+    external.generateReviewRequestEmail.mockImplementationOnce(async () => {
+      await database.client.emailJob.update({ where: { id: job.id }, data: { status: "skipped", lastError: "Checkout completed." } });
+      throw new Error("generation interrupted");
+    });
+    await processPendingEmailJobs();
+    expect((await database.client.emailJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("skipped");
+    expect(external.sendEmail).not.toHaveBeenCalled();
   });
 });

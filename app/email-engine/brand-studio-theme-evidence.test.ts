@@ -3,6 +3,7 @@ import {
   deriveThemeAssets,
   normalizeLumenBrandEvidence,
   resolveUploadedBrandLogo,
+  themeFontName,
 } from "../brand-studio/shopify-evidence.server";
 
 describe("Brand Studio theme evidence", () => {
@@ -17,6 +18,23 @@ describe("Brand Studio theme evidence", () => {
     expect(assets.buttonRadiusPx).toBe(8);
     expect(assets.logoReference).toBe("shopify://shop_images/northwind-wordmark.png");
     expect(assets.checksum).toBe("abc123");
+  });
+
+  it("reads Shopify font_picker handles as real font names, heading first", () => {
+    const assets = deriveThemeAssets([{
+      filename: "config/settings_data.json",
+      checksumMd5: "abc123",
+      body: { content: JSON.stringify({ current: { type_body_font: "assistant_n4", type_header_font: "playfair_display_n7", type_header_font_size: "large", body_font_scale: 100 } }) },
+    }]);
+    expect(assets.fontHints).toEqual(["Playfair Display", "Assistant"]);
+  });
+
+  it("keeps plain font names and rejects keywords", () => {
+    expect(themeFontName("lora_i6")).toBe("Lora");
+    expect(themeFontName("Inter")).toBe("Inter");
+    expect(themeFontName("uppercase")).toBeNull();
+    expect(themeFontName("16px")).toBeNull();
+    expect(themeFontName("shopify://shop_images/logo.png")).toBeNull();
   });
 
   it("resolves the exact theme logo from the merchant's uploaded Shopify files", () => {

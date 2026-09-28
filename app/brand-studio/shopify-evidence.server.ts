@@ -219,6 +219,25 @@ export function resolveUploadedBrandLogo(
   return strongest && strongest.score >= 200 ? strongest.url : null;
 }
 
+const NOT_A_FONT = /^(?:normal|bold|bolder|lighter|italic|oblique|uppercase|lowercase|capitalize|none|inherit|initial|small|medium|large|x-large|serif|sans-serif|monospace|system-ui|default)$/i;
+
+// Shopify's font_picker setting stores a handle such as "playfair_display_n7"
+// (family, then style + weight), not a display name. Turn that into
+// "Playfair Display"; keep plain names ("Inter") as they are; drop anything
+// that is a size, case, or weight keyword rather than a typeface.
+export function themeFontName(value: string): string | null {
+  const trimmed = value.trim();
+  const handle = trimmed.match(/^([a-z0-9]+(?:_[a-z0-9]+)*)_[nio][1-9]$/i);
+  if (handle)
+    return handle[1]
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  if (trimmed.length < 2 || trimmed.length > 100 || NOT_A_FONT.test(trimmed)) return null;
+  if (!/^[a-z][a-z0-9 '&.-]*$/i.test(trimmed) || /^\d/.test(trimmed) || /\d(?:px|rem|em|%)$/.test(trimmed)) return null;
+  return trimmed;
+}
+
 export function deriveThemeAssets(files: ThemeFile[]) {
   const textFiles = files.map(({ filename = "", checksumMd5 = null, body }) => ({ filename, checksumMd5, content: body?.content ?? "" }));
   const settings = textFiles.find(({ filename }) => filename === "config/settings_data.json")?.content ?? "";
@@ -241,9 +260,13 @@ export function deriveThemeAssets(files: ThemeFile[]) {
   const chromatic = observedColors.filter((color) => color !== paper && color !== ink && colorMetrics(color).saturation > .18);
   const primary = keyedColors.find(({ path, color }) => /primary|button_background|accent_1/.test(path) && color !== paper && color !== ink)?.color ?? chromatic[0] ?? ink;
   const accent = keyedColors.find(({ path, color }) => /accent|secondary/.test(path) && color !== primary && color !== paper)?.color ?? chromatic[1] ?? observedColors.find((color) => color !== primary && color !== paper && color !== ink) ?? primary;
-  const fontHints = [...new Set(entries.flatMap(({ path, value }) => typeof value === "string" && /font|typeface|typography/.test(path)
-    ? [value.replace(/_/g, " ").trim()]
-    : []).filter((value) => value.length >= 2 && value.length <= 100))].slice(0, 6);
+  // Heading fonts first, then body, so fontHints[0] is the display face and
+  // fontHints[1] the body face (what Brand Studio's two fields expect).
+  const fontRank = (path: string) => (/head|title|display/.test(path) ? 0 : /body|base|text/.test(path) ? 1 : 2);
+  const fontHints = [...new Set(entries
+    .filter(({ path, value }) => typeof value === "string" && /font|typeface|typography/.test(path))
+    .sort((left, right) => fontRank(left.path) - fontRank(right.path))
+    .flatMap(({ value }) => { const name = themeFontName(String(value)); return name ? [name] : []; }))].slice(0, 6);
   const radiusEntry = entries.find(({ path, value }) => /button.*radius|radius.*button/.test(path) && (typeof value === "number" || typeof value === "string"));
   const parsedRadius = radiusEntry ? Number.parseInt(String(radiusEntry.value), 10) : Number.NaN;
   const logoReference = entries.find(({ path, value }) =>

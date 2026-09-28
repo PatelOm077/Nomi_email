@@ -3,7 +3,7 @@ RUN apk add --no-cache openssl
 
 WORKDIR /app
 
-# Prisma validates the datasource while generating its client. Render replaces
+# Prisma validates the datasource while generating its client. Hosting replaces
 # this development-only value with its persistent-disk URL at runtime.
 ENV DATABASE_URL=file:dev.sqlite
 
@@ -31,7 +31,10 @@ COPY --from=build /app/build ./build
 COPY --from=build /app/app ./app
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/public ./public
+COPY --from=build /app/scripts/with-database-url.mjs ./scripts/with-database-url.mjs
+COPY --from=build /app/scripts/transfer-local-data.mjs ./scripts/transfer-local-data.mjs
 
 EXPOSE 3000
 
-CMD ["npm", "run", "docker-start"]
+# Start the server as PID 1 after migrations so it receives Fly's stop signal.
+CMD ["sh", "-c", "npm run setup && exec ./node_modules/.bin/react-router-serve ./build/server/index.js"]

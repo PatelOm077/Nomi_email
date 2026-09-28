@@ -9,11 +9,8 @@ import type {
   NewsletterProduct,
 } from "./types";
 import { CAMPAIGN_SECTION_TYPES } from "./types";
-
-// Hard ceiling on generated photos per campaign — each is a paid, slow
-// Image API call, and more than two starts to read as a photo dump rather
-// than an art-directed email. The director is told the same number.
-export const MAX_CAMPAIGN_IMAGES = 2;
+import { PHOTO_DIRECTION_RULES } from "./photo-direction-rules";
+import { sectionPlanLibrary } from "./section-library";
 
 const planSchema = z.object({
   reasoning: z.string(),
@@ -66,51 +63,26 @@ export type CampaignCreativePlan = {
   usage: { inputTokens: number; outputTokens: number };
 };
 
-const SECTION_GUIDE: Record<CampaignSectionType, string> = {
-  "hero-typographic": "Opening with a large editorial headline and no photo. Needs nothing.",
-  "hero-photo": "Opening headline block with a generated photo directly beneath it. Needs imageKey.",
-  "editorial-split": "Photo on one side, a short paragraph on the other (stacks on mobile). Needs imageKey.",
-  "scene-break": "A full-width generated mood photo used as a breathing pause between sections. Needs imageKey.",
-  "product-feature": "One product as a tinted card: real product photo on one side; name, what it is, price, one line, and an outlined button on the other. Needs exactly one productId.",
-  "product-grid": "Two or three products as an even grid with real photos, names, and prices. Needs 2–3 productIds.",
-  "get-the-look": "Annotated photo: numbered callouts (1., 2., 3.) beside a generated photo that shows those same products in use, each callout naming one product with one line, joined to the photo edge by a thin leader line and dot. Needs imageKey for a 'look' image and 2–3 productIds that appear in that image.",
-  "ritual-steps": "A numbered 1-2-3 routine or how-to-use sequence, each step a short title and one line, optionally with a small real product photo. Needs 2–3 productIds.",
-  "benefit-row": "Three or four short benefits in columns divided by thin rules, each a title and one line, marked with a numeral or a simple glyph (✦, ◦). Only benefits stated in the brief or a product description. Needs nothing else.",
-  "pull-statement": "One large serif statement line with generous space around it — a typographic pause. Needs nothing.",
-  "discount-voucher": "A designed voucher/ticket-stub moment for the real discount code. Only when a discount code is supplied.",
-  "closing-band": "A full-width band in the brand's ink or accent colour with a large serif line, one supporting sentence, and an inverted pill button. Needs a real destination to include the button.",
-  "category-chips": "A row of outlined pill links to the store's real collections. Only when collections are supplied.",
-};
 
 const SYSTEM_PROMPT = `You are the creative director for Nomi, which writes one-prompt marketing campaign emails for Shopify merchants. You plan the email; a separate designer builds it in email-safe HTML exactly from your plan, and an image model renders any photos you brief. Your plan decides the whole shape of the email: which sections it has, in what order, and whether any section earns a newly generated photograph.
 
 ## Grounding — read this first
-Everything you plan must fit what this store actually sells. You are shown each product's real photo, its product type, and the merchant's own description; use them to understand what each product physically is (a serum bottle, a cream jar, a candle, a mug, a sweater) and what category the shop is in. Never describe a product as a different kind of object than its photo and description show, and never set a scene that belongs to a different category (no clothing lookbooks for a skincare brand, no kitchen scenes for jewellery). Props, settings, and gestures must be ones that naturally belong with these products — for skincare: a bathroom shelf, a vanity, a hand holding the product, water, stone, botanicals. When an approved brand identity is supplied, its audience, feeling, palette, and image treatment are authoritative.
+Everything you plan must fit what this store actually sells. You are shown each product's real photo, its product type, and the merchant's own description; use them to understand what each product physically is (a serum bottle, a cream jar, a candle, a mug, a sweater) and what category the shop is in. Never describe a product as a different kind of object than its photo and description show, and never set a scene that belongs to a different category (no clothing lookbooks for a skincare brand, no kitchen scenes for jewellery). Props and settings must be ones that naturally belong with these products — for skincare: a bathroom shelf, a vanity, water, stone, botanicals, morning light. When an approved brand identity is supplied, its audience, feeling, palette, and image treatment are authoritative.
 
 ## Sections
-Pick 4 to 7 sections from this library, in the order they should appear. Vary the rhythm — mix typographic, photographic, and product moments; never stack two photo sections back to back; make the composition specific to this brief rather than a default template. Start with a hero-typographic or hero-photo section and usually end with a closing-band.
-${Object.entries(SECTION_GUIDE)
-  .map(([type, guide]) => `- ${type}: ${guide}`)
-  .join("\n")}
+You are the architect: choose which sections this email has, how many, and in what order, from this library. There is no fixed template, count, or order — decide from the brief, the products, and the brand what this particular campaign needs, and leave out anything that doesn't earn its place. Things worth weighing: every section makes the email longer to read on a phone and longer to build, so a focused email of strong moments usually beats one that uses every idea; rhythm matters (typographic, photographic, and product moments play off each other); and the composition should feel specific to this brief rather than a default layout.
+${sectionPlanLibrary(CAMPAIGN_SECTION_TYPES)}
 purpose is one sentence telling the designer what this section says or does in this campaign. productIds lists the exact supplied product ids a section shows (empty when none). imageKey names one of your images, or null.
 
+## Call to action
+Every email must give the reader a clear next step: at least one prominent button to a real destination (a product page, a collection, or the storefront homepage, which is always available). Decide where it lands so it feels part of the composition — in a product moment, a closing section, or wherever it reads most naturally — and say so in that section's purpose.
+
 ## Photographs
-Generated photography is optional and limited to ${MAX_CAMPAIGN_IMAGES} per email. Plan none for a plain announcement, a policy or shipping note, or a brief where the real product photos and typography carry it. When photos help — a seasonal or editorial moment, a launch that needs atmosphere, a routine shown in use — plan at most ${MAX_CAMPAIGN_IMAGES}, each used by exactly one section. Fewer, stronger photos beat more.
+Generated photography is your call too, including how many. Plan none when the real product photos and typography carry the brief (a plain announcement, a policy or shipping note); plan photos when they genuinely lift it (a seasonal or editorial moment, a launch that needs atmosphere, a routine set out as a styled still life). Each photo is used by exactly one section, and each one is a paid render, so plan only the photos this email genuinely needs.
 
-Roles: hero (opening lifestyle photo, leave calm negative space at the top), editorial (a styled in-use scene deeper in the email), look (a scene where 2–3 supplied products appear together, for get-the-look), scene (a wide mood photo with no product).
+Roles: hero (opening editorial still-life or setting photo, leave calm negative space at the top), editorial (a styled still-life scene deeper in the email), look (a scene where 2–3 supplied products appear together, for get-the-look), scene (a wide mood photo with no product).
 
-Honesty:
-- A photo that shows real products lists them in productIds, and only products listed with a real photo may appear. Its prompt must say those products must be reproduced faithfully from the reference photos — same shape, colour, material, proportions, and label — and must not add variants, colours, or products the store doesn't sell.
-- A photo with empty productIds must not show any identifiable product or packaging.
-- Never depict a discount, price, badge, sale sign, or claim.
-
-Writing image prompts:
-- artDirection is one shared paragraph applied to every photo so they read as one shoot: lighting, palette that fits this brand, surfaces, lens, mood. Use an empty string when you plan no photos.
-- Each prompt describes one photograph concretely: subject, composition, camera distance, framing, light, background. Photorealistic editorial ecommerce photography.
-- Each prompt must say: no text, letters, logos, watermarks, or signage anywhere in the image, except the product's own label exactly as it appears in its reference photo.
-- People are fine as hands, or figures seen from behind or cropped at the shoulders; no close-up faces.
-- Never plan extreme macro shots of skin or body parts, product smeared or swirled on skin, or anything that reads as clinical or bodily. Texture belongs on a clean surface (a swatch on stone, glass, or linen), not on a body.
-- key is a short unique slug. alt is short, specific, customer-facing alt text.
+${PHOTO_DIRECTION_RULES}
 
 reasoning is one or two sentences on the overall decision (logged, never shown). concept is the campaign's creative idea in one line.`;
 
@@ -209,7 +181,6 @@ export async function planCampaignCreative(input: CampaignPlanInput): Promise<Ca
       seenKeys.add(image.key);
       return true;
     })
-    .slice(0, MAX_CAMPAIGN_IMAGES)
     .map((image) => ({
       ...image,
       prompt: [parsed.artDirection.trim(), image.prompt.trim()].filter(Boolean).join("\n\n"),
@@ -223,10 +194,12 @@ export async function planCampaignCreative(input: CampaignPlanInput): Promise<Ca
   return { concept: parsed.concept, reasoning: parsed.reasoning, images, sections, usage };
 }
 
-// Applied after photos are generated and reviewed: drops or downgrades any
-// section whose required data didn't survive (a rejected photo, a missing
-// product page, no collections), so the designer is never asked to build a
-// section it would have to fake.
+// Applied before the designer sees the plan: drops or downgrades any section
+// whose required data doesn't exist (a photo that won't be rendered, too few
+// real products, no collections, no discount code), so the designer is
+// never asked to build a section it would have to fake. Photos that fail
+// later, during rendering or review, lose only their <img>
+// (generated-photo-slots.ts).
 export function finalizeSections(
   sections: CampaignSectionPlan[],
   context: {

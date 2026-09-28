@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { ActionFunctionArgs, LinksFunction, LoaderFunctionArgs } from "react-router";
-import { Link, useFetcher, useLoaderData } from "react-router";
+import { Link, redirect, useFetcher, useLoaderData } from "react-router";
 import v8EditorStyles from "../styles/v8-email-editor.css?url";
 import { authenticate } from "../shopify.server";
+import { templatesEnabled } from "../dashboard/reference-looks.server";
 import db from "../db.server";
 import { rewriteCopy, type RewriteStyle } from "../email-engine/rewrite-copy";
 
@@ -337,6 +338,8 @@ function parseLook(value: string | null): LookId {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
+  // Hidden from the deployed app with the Templates route; see reference-looks.server.ts.
+  if (!templatesEnabled()) throw redirect("/app");
   const params = new URL(request.url).searchParams;
   const look = parseLook(params.get("look"));
   const flow = parseFlow(params.get("flow"));
@@ -395,11 +398,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
+  if (!templatesEnabled()) throw redirect("/app");
   const params = new URL(request.url).searchParams;
   const look = parseLook(params.get("look"));
   const flow = parseFlow(params.get("flow"));
   const maximum = EMAIL_NAMES[look][flow].length - 1;
-  const emailIndex = Number.parseInt(params.get("email") ?? "0", 10);
+  const emailIndex =Number.parseInt(params.get("email") ?? "0", 10);
   if (!Number.isInteger(emailIndex) || emailIndex < 0 || emailIndex > maximum) return { ok: false as const, error: "Choose a valid email before saving." };
 
   const formData = await request.formData();
@@ -827,7 +831,7 @@ function LogoEditor({ block, onUpdate, look, shopifyFiles, uploadState, onUpload
         <button type="button" className={source === "shopify" ? "is-active" : ""} onClick={() => onUpdate({ logoSource: "shopify" })}>Shopify files</button>
         <button type="button" className={source === "upload" ? "is-active" : ""} onClick={() => onUpdate({ logoSource: "upload" })}>Upload</button>
       </div>
-      {source === "shopify" ? <div className="v9-asset-list">{shopifyFiles.length ? shopifyFiles.map((asset) => <button type="button" key={asset.id} className={d.logoSrc === asset.url ? "is-selected" : ""} onClick={() => onUpdate({ logoSrc: asset.url, logoAlt: asset.alt })}><img src={asset.url} alt="" /><span>{asset.name}</span></button>) : <p className="v9-hint">No Shopify files yet.</p>}</div> : null}
+      {source === "shopify" ? <div className="v9-asset-list" style={{ gridAutoRows: "max-content" }}>{shopifyFiles.length ? shopifyFiles.map((asset) => <button type="button" key={asset.id} className={d.logoSrc === asset.url ? "is-selected" : ""} onClick={() => onUpdate({ logoSrc: asset.url, logoAlt: asset.alt })}><img src={asset.url} alt="" /><span>{asset.name}</span></button>) : <p className="v9-hint">No Shopify files yet.</p>}</div> : null}
       {source === "upload" ? <>
         <label className="v9-upload-control">{uploadState.uploading ? "Uploading…" : "Choose logo from computer"}<input type="file" accept="image/jpeg,image/png,image/gif" disabled={uploadState.uploading} onChange={(e) => { const file = e.target.files?.[0]; if (file) onUpload(file, "logo"); e.currentTarget.value = ""; }} /></label>
         {uploadState.error ? <p className="v9-error" role="alert">{uploadState.error}</p> : null}
@@ -872,7 +876,7 @@ function ImageEditor(props: PanelProps & { look: LookId; shopifyFiles: MediaAsse
         {uploadState.error ? <p className="v9-error" role="alert">{uploadState.error}</p> : null}
         {uploadState.status ? <p className="v9-hint" role="status">{uploadState.status}</p> : null}
       </> : null}
-      <div className="v9-asset-list">{options[source].length ? options[source].map((asset) => <button type="button" key={asset.id} className={d.src === asset.url ? "is-selected" : ""} onClick={() => onUpdate({ src: asset.url, alt: asset.alt, imageSource: source })}><img src={asset.url} alt="" /><span>{asset.name}</span></button>) : <p className="v9-hint">No images available from this source yet.</p>}</div>
+      <div className="v9-asset-list" style={{ gridAutoRows: "max-content" }}>{options[source].length ? options[source].map((asset) => <button type="button" key={asset.id} className={d.src === asset.url ? "is-selected" : ""} onClick={() => onUpdate({ src: asset.url, alt: asset.alt, imageSource: source })}><img src={asset.url} alt="" /><span>{asset.name}</span></button>) : <p className="v9-hint">No images available from this source yet.</p>}</div>
       {d.src ? <div className="v9-current-asset"><img src={d.src} alt="" /><span>Selected — natural ratio preserved</span></div> : null}
       <Field label="Alt text"><input value={d.alt || ""} onChange={(e) => onUpdate({ alt: e.target.value })} placeholder="Describe the image for screen readers…" /></Field>
       <Field label="Link (optional)"><input value={d.linkUrl || ""} onChange={(e) => onUpdate({ linkUrl: e.target.value })} placeholder="https://…" /></Field>

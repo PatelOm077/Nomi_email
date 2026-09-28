@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 
 // Inline so the state colors can't be lost to the embedded-iframe CSS issue.
 const APP_EMBED_TAG_STYLE = {
@@ -11,11 +12,49 @@ type DashboardFlow = {
   id: string;
   ready: number;
   total: number;
+  // Last-30-day delivery stats; null when nothing has been sent.
+  stats: {
+    sent: number;
+    opened: number;
+    clicked: number;
+    conversions: number;
+    conversionValue: number;
+  } | null;
 };
+
+type DashboardCampaigns = {
+  total: number;
+  recent: { id: string; name: string; status: string; createdAt: string; editable: boolean }[];
+};
+
+function formatCampaignDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+function formatRate(count: number, sent: number) {
+  const rate = sent > 0 ? Math.round((count / sent) * 1000) / 10 : 0;
+  return `${rate}% (${count})`;
+}
+
+function formatMoney(value: number, currency: string, fractionDigits = 2) {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    }).format(value);
+  } catch {
+    return `${currency} ${value.toFixed(fractionDigits)}`;
+  }
+}
 
 export function NomiDashboard({
   shopName,
   flows,
+  uniqueRecipients,
+  campaigns,
+  currency,
   generatedCount,
   totalEmailCount,
   sendingEnabled,
@@ -27,6 +66,9 @@ export function NomiDashboard({
 }: {
   shopName: string;
   flows: DashboardFlow[];
+  uniqueRecipients: number;
+  campaigns: DashboardCampaigns;
+  currency: string | null;
   generatedCount: number;
   totalEmailCount: number;
   sendingEnabled: boolean;
@@ -44,6 +86,16 @@ export function NomiDashboard({
     care: "How Was It?",
     winback: "Welcome Back",
   };
+
+  const money = currency ?? "USD";
+  const totals = flows.reduce(
+    (sum, { stats }) => ({
+      sent: sum.sent + (stats?.sent ?? 0),
+      conversions: sum.conversions + (stats?.conversions ?? 0),
+      value: sum.value + (stats?.conversionValue ?? 0),
+    }),
+    { sent: 0, conversions: 0, value: 0 },
+  );
 
   return (
     <main className="nomi-dashboard-page">
@@ -99,15 +151,15 @@ export function NomiDashboard({
         <section className="nomi-dashboard-metrics" aria-label="Email performance">
           <div className="nomi-dashboard-period">▣&nbsp; Last 30 days</div>
           <div className="nomi-dashboard-primary-metrics">
-            <Metric label="Attributed revenue" value="$0" accent />
-            <Metric label="Conversions" value="0" />
+            <Metric label="Attributed revenue" value={formatMoney(totals.value, money, 0)} accent />
+            <Metric label="Conversions" value={String(totals.conversions)} />
             <Metric label="ROI" value="0x" />
           </div>
           <div className="nomi-dashboard-secondary-metrics">
-            <Metric label="Emails sent" value="0" compact />
-            <Metric label="Unique contacts emailed" value="0" compact />
-            <Metric label="Flows revenue" value="$0" compact />
-            <Metric label="Campaigns revenue" value="$0" compact />
+            <Metric label="Emails sent" value={String(totals.sent)} compact />
+            <Metric label="Unique contacts emailed" value={String(uniqueRecipients)} compact />
+            <Metric label="Flows revenue" value={formatMoney(totals.value, money, 0)} compact />
+            <Metric label="Campaigns revenue" value={formatMoney(0, money, 0)} compact />
           </div>
         </section>
 
@@ -116,18 +168,18 @@ export function NomiDashboard({
             <thead><tr><th>Flow name</th><th>Emails sent</th><th>Open rate</th><th>Click rate</th><th>Conversions</th><th>Conv. value</th><th>Status</th></tr></thead>
             <tbody>{flows.map((flow) => {
               const ready = flow.ready === flow.total;
-              return <tr key={flow.id}><td><a href="/app?view=flows">› {flowNames[flow.id] ?? flow.id}</a></td><td>0</td><td>0% (0)</td><td>0% (0)</td><td>0</td><td>$0.00</td><td><span className={ready ? "nomi-dashboard-status-ready" : "nomi-dashboard-status-needs"} aria-label={ready ? "Ready" : `${flow.ready} of ${flow.total} emails ready`}>{ready ? "●" : "▲"}</span></td></tr>;
+              const stats = flow.stats ?? { sent: 0, opened: 0, clicked: 0, conversions: 0, conversionValue: 0 };
+              return <tr key={flow.id}><td><Link to={`/app/flow-editor?flow=${flow.id}`}>› {flowNames[flow.id] ?? flow.id}</Link></td><td>{stats.sent}</td><td>{formatRate(stats.opened, stats.sent)}</td><td>{formatRate(stats.clicked, stats.sent)}</td><td>{stats.conversions}</td><td>{formatMoney(stats.conversionValue, money)}</td><td><span className={ready ? "nomi-dashboard-status-ready" : "nomi-dashboard-status-needs"} aria-label={ready ? "Ready" : `${flow.ready} of ${flow.total} emails ready`}>{ready ? "●" : "▲"}</span></td></tr>;
             })}</tbody>
           </table>
           <p className="nomi-dashboard-table-note"><span>▲ Not set up — this flow won&rsquo;t send</span><span className="is-ready">● Once activated, it sends automatically</span></p>
         </TableSection>
 
         <TableSection title="Campaigns">
-          <table><thead><tr><th>Campaign name</th><th>Date</th><th>Emails</th><th>Open rate</th><th>Click rate</th><th>Placed order</th><th>Revenue</th><th>Status</th></tr></thead><tbody><tr><td><a href="/app/campaigns">Create your first campaign</a></td><td>—</td><td>0</td><td>0% (0)</td><td>0% (0)</td><td>0</td><td>$0.00</td><td><span className="nomi-dashboard-tag">Draft</span></td></tr></tbody></table>
-        </TableSection>
-
-        <TableSection title="Email collection forms">
-          <table><thead><tr><th>Form</th><th>Impressions</th><th>Submitted emails</th><th>Submitted phones</th><th>Submit rate</th><th>Status</th></tr></thead><tbody><tr><td><a href="/app/brand-settings">Pop-up</a></td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td><span className="nomi-dashboard-status-needs" aria-label="Needs setup">▲</span></td></tr></tbody></table>
+          <table><thead><tr><th>Campaign name</th><th>Date</th><th>Emails</th><th>Open rate</th><th>Click rate</th><th>Placed order</th><th>Revenue</th><th>Status</th></tr></thead><tbody>{campaigns.recent.length ? campaigns.recent.map((campaign) => (
+            <tr key={campaign.id}><td><Link to={campaign.editable ? `/app/campaigns/edit?id=${campaign.id}` : "/app/campaigns"}>{campaign.name}</Link></td><td style={{ whiteSpace: "nowrap" }}>{formatCampaignDate(campaign.createdAt)}</td><td>0</td><td>0% (0)</td><td>0% (0)</td><td>0</td><td>{formatMoney(0, money)}</td><td><span className="nomi-dashboard-tag">{campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}</span></td></tr>
+          )) : <tr><td><Link to="/app/campaigns?create=1">Create your first campaign</Link></td><td>—</td><td>0</td><td>0% (0)</td><td>0% (0)</td><td>0</td><td>$0.00</td><td><span className="nomi-dashboard-tag">Draft</span></td></tr>}</tbody></table>
+          {campaigns.total > campaigns.recent.length ? <p className="nomi-dashboard-table-note"><Link to="/app/campaigns">View all {campaigns.total} campaigns</Link></p> : null}
         </TableSection>
 
         <footer className="nomi-dashboard-footer">
@@ -172,7 +224,7 @@ function ChecklistRow({
   href?: string;
 }) {
   const content = <><span className={`nomi-dashboard-check${complete ? " is-complete" : ""}`} aria-hidden="true">{complete ? <svg viewBox="0 0 12 12" fill="none"><path d="M2.35 6.15 4.85 8.55 9.65 3.45" /></svg> : null}</span><span className="nomi-dashboard-check-copy"><strong>{title}</strong>{detail ? <small>{detail}</small> : null}</span>{rating ? <span className="nomi-dashboard-rating" aria-label="Not yet rated">☆ ☆ ☆ ☆ ☆</span> : null}</>;
-  if (href) return <a className="nomi-dashboard-check-row" href={href}>{content}</a>;
+  if (href) return <Link className="nomi-dashboard-check-row" to={href}>{content}</Link>;
   return action ? <button className="nomi-dashboard-check-row" type="button" onClick={action} disabled={disabled} title={titleHint}>{content}</button> : <div className="nomi-dashboard-check-row">{content}</div>;
 }
 

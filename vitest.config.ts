@@ -8,6 +8,7 @@ export default defineConfig({
       "app/email-delivery/**/*.test.ts",
       "app/dashboard/**/*.test.ts",
       "app/brand-studio/**/*.test.ts",
+      "app/billing/**/*.test.ts",
       "email-templates/**/*.test.ts",
     ],
     clearMocks: true,

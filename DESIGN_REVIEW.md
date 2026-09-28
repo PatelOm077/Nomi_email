@@ -2406,3 +2406,44 @@ with Back / Next / Finish replay and clickable step tabs.
   The card stacks to one column at tablet width and below. The See pricing
   button is 44px tall.
   Screenshots: `settings-plan-billing-{desktop,tablet,mobile}.png`.
+
+## 2026-09-27 — Seam editor: Shopify files grid
+
+- Bug: the Shopify files picker showed thumbnails as thin strips. The tiles
+  clip (`overflow: hidden`), which drops their automatic minimum height to 0,
+  so the grid's auto rows shrank to share the 220px max-height instead of
+  scrolling.
+- Fix: `grid-auto-rows: max-content` on `.v9-asset-list` (also inline on each
+  list, per the embedded-iframe CSS note), max-height raised to 320px. Applies
+  to the campaign, Brand Studio and template editors.
+- Checked live in Chrome at 1920 and 768: full-height thumbnails with names,
+  list scrolls, Save changes stays visible. The 375 capture came back blank
+  because the Shopify admin reloads into its mobile shell under emulation, so
+  mobile is not verified.
+  Screenshots: `seam-editor-shopify-files-fixed-{desktop,tablet}.png`.
+
+## 2026-09-28 — Dashboard: flow links, campaigns table, forms removed (live on Fly)
+
+- Checked live at `nomi-email.fly.dev` in the Shopify admin (Chrome), desktop 1920px, tablet 768px, mobile 375px.
+- Email collection forms card removed. Flow names link to `/app/flow-editor?flow=<id>`: clicking Abandoned Cart opens the editor on that flow. Fixed an error page caused by plain `<a>` links inside the embedded frame by switching to React Router `Link`.
+- "Create your first campaign" opens the Create Campaign modal (`/app/campaigns?create=1`).
+- Campaigns table lists the 5 newest real campaigns plus "View all N campaigns". Dates are kept on one line; on mobile, long names wrap and the table scrolls horizontally inside its card like the Flows table.
+- Screenshots: `screenshots/dashboard-flow-link-cart-live-fixed.png`, `dashboard-create-campaign-modal-live.png`, `dashboard-campaigns-table-{desktop,tablet,mobile}.png`.
+
+## 2026-09-28 — Required fonts in Brand Studio; Branding mirrors Visual evidence (live on Fly)
+
+- Brand Studio snapshot: Display/Body character are now required (`FontField` in `app/components/brand-inputs.tsx`). Clearing either shows an inline red message ("Add a display character, like Playfair Display.") and blocks submit. The server also rejects blank fonts or brand name before any AI call.
+- Branding (Brand & Settings) now uses Brand Studio's layout: logo + brand name, then Paper/Ink/Primary/Accent swatches and the display/body characters. Primary, logo and language stay editable. The rest are read-only with a "Change in Brand Studio" button, because editing them there rebuilds the 13 emails. A blank Primary is blocked ("Primary needs a color."), and a missing Brand Studio font shows in red.
+- Colors are grouped in pairs: 4 across on desktop, 2×2 on tablet and mobile (was 3+1 at 768px, fixed).
+- Checked live in Chrome at 1920 / 768 / 375. Screenshots: `screenshots/brand-studio-font-required-error.png`, `branding-primary-required-error.png`, `branding-visual-identity-{desktop,tablet,mobile,mobile-2}.png`.
+
+## Flow Editor regenerate modal (2026-09-28)
+- "Regenerate email" in the Flow Editor now opens a Create Campaign-style dialog: a brief for Nomi AI, what to feature (As designed / Product / Collection / Products, live catalogue pickers shared with Campaigns via `app/components/catalog-pickers.tsx`), and an optional discount code with value and dates. The result replaces that email in the Flow Editor.
+- Checked live in Chrome at 1920 / 768 / 375: body scrolls inside the modal, Discard/Regenerate stay visible, the product picker loads the store's products. Screenshots: `screenshots/flow-regenerate-modal-{desktop,desktop-product-discount,tablet,mobile}.png`.
+- Update: the regenerate dialog now shows the Campaigns "Generating Your Email" animation, then the finished email with Discard / Save to flow; only Save replaces the flow email. Create Campaign no longer offers "Start from template". Checked live at desktop: `screenshots/flow-regenerate-generating-desktop.png`, `flow-regenerate-review-desktop.png`, `campaign-create-ai-only-desktop.png`.
+- Brand Studio now builds each lifecycle email with the campaign pipeline (plan, photos, designer). Live check: a regenerated 2nd Welcome email passed the quality gate with a newly generated photo (`screenshots/brand-studio-campaign-engine-welcome-2.png`, discarded, not saved).
+
+## 2026-09-28 — Nomi help chat: AI answers and team replies (live on Fly)
+- Finished the support chat Codex started. Questions are now answered by Claude, using the Help library, the plans and the shop's live state; team replies email the merchant, and a magenta dot on the launcher marks an unread team reply. The empty chat now opens at its welcome heading instead of scrolled to the bottom.
+- Checked live at `nomi-email.fly.dev` in the Shopify admin (Chrome) at 1920 / 768 / 375. Asked "Why haven't any of my abandoned cart emails gone out yet?": the answer arrived in about 3 s and used Lumen's real unsent-email record. Panel, composer, Talk to the team and Close stay fully visible at every width, with no horizontal scroll.
+- Screenshots: `screenshots/support-ai-desktop-open.png`, `support-ai-desktop-answer.png`, `support-ai-tablet.png`, `support-ai-mobile.png`.

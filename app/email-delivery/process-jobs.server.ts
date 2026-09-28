@@ -5,8 +5,12 @@ import { generateAbandonedCartEmail } from "../email-engine/generate-abandoned-c
 import { optimizeEmailImageUrl } from "../dashboard/email-image-url.server";
 import { EMAIL_GENERATION_PAUSED } from "../email-engine/generation-status";
 import { EMAIL_LANGUAGES, EMAIL_TONES, type EmailBrandIdentity, type EmailLanguage, type EmailTone } from "../email-engine/types";
-import { sendEmail } from "./provider.server";
-import { loadApprovedBrandIdentity } from "./approved-brand.server";
+import { sendEmail, type SendEmailInput } from "./provider.server";
+import { getEmailDeliveryConfig } from "./config.server";
+import { loadApprovedBrandIdentity, loadApprovedPersonalEmail, type ApprovedPersonalEmail } from "./approved-brand.server";
+import { fillPersonalSlots } from "../email-engine/personal-slots";
+import { checkAllowance, recordUsage } from "../billing/usage.server";
+import type { GenerateEmailOptions } from "../email-engine/generate-email";
 import { isSuppressed, listUnsubscribeHeaders, unsubscribeUrl } from "./unsubscribe.server";
 import { withComplianceFooter } from "../email-engine/compliance-footer";
 import { loadShopFooterAddress, resolveSenderFooter } from "../dashboard/sender-footer.server";
@@ -135,6 +139,16 @@ function resolveLanguage(value: unknown, fallback: string): EmailLanguage {
   return EMAIL_LANGUAGES.find(({ code }) => code.toLowerCase().split("-")[0] === prefix)?.code ?? "en";
 }
 
+// The approved Brand Studio email is written in the store's language, so it
+// is only sent pre-built to customers who read that language. Everyone else
+// (and any shop whose approved email predates the slot markup) gets a
+// per-send generated email; the brand is already designed, so low effort.
+const FALLBACK_GENERATION: GenerateEmailOptions = { effort: "low" };
+
+function isStoreLanguage(language: EmailLanguage, storeLanguage: string | null | undefined): boolean {
+  return language === resolveLanguage(storeLanguage ?? "en", "en");
+}
+
 function resolveTone(value: string | undefined): EmailTone {
   return EMAIL_TONES.some(({ code }) => code === value) ? (value as EmailTone) : "warm-plain";
 }
@@ -164,8 +178,10 @@ async function prepareAbandonedCart(
   shop: string,
   payload: Record<string, unknown>,
   brandIdentity: EmailBrandIdentity | undefined,
+  approved: ApprovedPersonalEmail | null,
+  cached?: PreparedEmail,
 ): Promise<PreparedEmail | null> {
-  const token = typeof payload.token === "string" ? payload.token : null;
+  const token =typeof payload.token === "string" ? payload.token : null;
   const email = typeof payload.email === "string" ? payload.email : null;
   if (!token || !email || payload.buyer_accepts_marketing !== true) return null;
   if (await isSuppressed({ shop, email })) return null;
@@ -177,10 +193,27 @@ async function prepareAbandonedCart(
     node.abandonedCheckoutUrl.includes(token),
   )?.node;
   if (!checkout) return null;
+  if (cached) return cached;
 
   const settings = await db.shopSettings.findUnique({ where: { shop } });
   const language = resolveLanguage(payload.customer_locale, settings?.language ?? "en");
   const tone = resolveTone(settings?.tone);
+  const lineItems = await Promise.all(checkout.lineItems.edges.map(async ({ node }) => ({
+    title: node.title ?? "Item",
+    quantity: node.quantity,
+    price: formatMoney(node.originalTotalPriceSet.shopMoney, language),
+    imageUrl: await optimizeEmailImageUrl(node.image?.url),
+  })));
+  const idempotencyKey = `cart:${shop}:${token}`;
+
+  const prebuilt = approved && isStoreLanguage(language, settings?.language)
+    ? fillPersonalSlots(approved.html, {
+        actionUrl: checkout.abandonedCheckoutUrl,
+        items: lineItems.map((item) => ({ ...item, url: null })),
+      })
+    : null;
+  if (prebuilt) return { to: email, subject: approved!.subject, html: prebuilt, idempotencyKey };
+
   const html = await generateAbandonedCartEmail({
     shopName: data.shop.name,
     language,
@@ -189,18 +222,13 @@ async function prepareAbandonedCart(
     customerFirstName: checkout.customer?.firstName ?? null,
     recoveryUrl: checkout.abandonedCheckoutUrl,
     total: formatMoney(checkout.totalPriceSet.shopMoney, language),
-    lineItems: await Promise.all(checkout.lineItems.edges.map(async ({ node }) => ({
-      title: node.title ?? "Item",
-      quantity: node.quantity,
-      price: formatMoney(node.originalTotalPriceSet.shopMoney, language),
-      imageUrl: await optimizeEmailImageUrl(node.image?.url),
-    }))),
-  });
+    lineItems,
+  }, FALLBACK_GENERATION);
   return {
     to: email,
     subject: SUBJECTS[language].cart,
     html,
-    idempotencyKey: `cart:${shop}:${token}`,
+    idempotencyKey,
   };
 }
 
@@ -209,9 +237,11 @@ async function prepareEmail(
   topic: string,
   payload: Record<string, unknown>,
   brandIdentity: EmailBrandIdentity | undefined,
+  approved: ApprovedPersonalEmail | null,
+  cached?: PreparedEmail,
 ): Promise<PreparedEmail | null> {
   if (topic === "CHECKOUTS_UPDATE") {
-    return prepareAbandonedCart(shop, payload, brandIdentity);
+    return prepareAbandonedCart(shop, payload, brandIdentity, approved, cached);
   }
 
   const orderId = orderIdFromPayload(payload);
@@ -223,6 +253,7 @@ async function prepareEmail(
   const order = data.order;
   if (!order?.email) throw new Error(`Order ${orderId} has no customer email.`);
   if (await isSuppressed({ shop, email: order.email })) return null;
+  if (cached) return cached.to === order.email ? cached : null;
 
   const settings = await db.shopSettings.findUnique({ where: { shop } });
   const language = resolveLanguage(payload.customer_locale, settings?.language ?? "en");
@@ -238,16 +269,30 @@ async function prepareEmail(
 
   if (topic === "FULFILLMENTS_UPDATE") {
     if (String(payload.shipment_status).toLowerCase() !== "delivered") return null;
+    const reviewUrl = order.lineItems.edges[0]?.node.product?.onlineStoreUrl ?? null;
+    const lineItems = await Promise.all(order.lineItems.edges.map(async ({ node }) => ({
+      title: node.title,
+      quantity: node.quantity,
+      imageUrl: await optimizeEmailImageUrl(node.image?.url),
+      url: node.product?.onlineStoreUrl ?? null,
+    })));
+    const idempotencyKey = `review:${shop}:${order.id}`;
+
+    const actionUrl = reviewUrl ?? approved?.storefrontUrl ?? null;
+    const prebuilt = approved && actionUrl && isStoreLanguage(language, settings?.language)
+      ? fillPersonalSlots(approved.html, {
+          actionUrl,
+          items: lineItems.map((item) => ({ ...item, price: null })),
+        })
+      : null;
+    if (prebuilt) return { to: order.email, subject: approved!.subject, html: prebuilt, idempotencyKey };
+
     const html = await generateReviewRequestEmail({
       ...common,
-      reviewUrl: order.lineItems.edges[0]?.node.product?.onlineStoreUrl ?? null,
-      lineItems: await Promise.all(order.lineItems.edges.map(async ({ node }) => ({
-        title: node.title,
-        quantity: node.quantity,
-        imageUrl: await optimizeEmailImageUrl(node.image?.url),
-      }))),
-    });
-    return { to: order.email, subject: subject("review", language, order.name), html, idempotencyKey: `review:${shop}:${order.id}` };
+      reviewUrl,
+      lineItems: lineItems.map(({ title, quantity, imageUrl }) => ({ title, quantity, imageUrl })),
+    }, FALLBACK_GENERATION);
+    return { to: order.email, subject: subject("review", language, order.name), html, idempotencyKey };
   }
 
   throw new Error(`Unsupported email webhook topic: ${topic}`);
@@ -259,6 +304,22 @@ export async function processPendingEmailJobs(limit = 10) {
   if (EMAIL_GENERATION_PAUSED) {
     return { sent: 0, skipped: 0, retried: 0, failed: 0 };
   }
+
+  // An active worker refreshes updatedAt. Only reclaim abandoned leases.
+  // Legacy interrupted jobs have no frozen provider body: require review.
+  const stale = new Date(Date.now() - 15 * 60_000);
+  await db.emailJob.updateMany({
+    where: { status: "processing", updatedAt: { lt: stale }, deliveryStartedAt: null },
+    data: { status: "failed", lastError: "Interrupted before durable delivery tracking; review before retrying." },
+  });
+  await db.emailJob.updateMany({
+    where: { status: "processing", updatedAt: { lt: stale }, deliveryStartedAt: { not: null }, attempts: { lt: 5 } },
+    data: { status: "pending", availableAt: new Date(), lastError: "Recovered interrupted worker." },
+  });
+  await db.emailJob.updateMany({
+    where: { status: "processing", updatedAt: { lt: stale }, attempts: { gte: 5 } },
+    data: { status: "failed", lastError: "Interrupted worker exhausted retries; review provider delivery status." },
+  });
 
   const jobs = await db.emailJob.findMany({
     where: { status: "pending", availableAt: { lte: new Date() } },
@@ -273,8 +334,15 @@ export async function processPendingEmailJobs(limit = 10) {
       data: { status: "processing", attempts: { increment: 1 } },
     });
     if (claimed.count !== 1) continue;
+    const heartbeat = setInterval(() => {
+      void db.emailJob.updateMany({ where: { id: job.id, status: "processing" }, data: { updatedAt: new Date() } }).catch(() => {});
+    }, 30_000);
+    heartbeat.unref();
 
     try {
+      if (job.deliveryStartedAt && Date.now() - job.deliveryStartedAt.getTime() >= 23 * 60 * 60_000) {
+        throw new Error("Delivery outcome uncertain beyond provider idempotency window; manual review required.");
+      }
       if (!SENDABLE_TOPICS.has(job.topic)) {
         await db.emailJob.update({
           where: { id: job.id },
@@ -301,11 +369,28 @@ export async function processPendingEmailJobs(limit = 10) {
         results.skipped += 1;
         continue;
       }
+      // Checked before any generation cost. Paid plans always pass (extra
+      // emails are billed per block); Free stops at its monthly emails. A job
+      // already handed to the provider is always finished.
+      if (!job.deliveryStartedAt) {
+        const allowance = await checkAllowance(job.shop, "email_sent");
+        if (!allowance.allowed) {
+          await db.emailJob.update({
+            where: { id: job.id },
+            data: { status: "skipped", lastError: allowance.message },
+          });
+          results.skipped += 1;
+          continue;
+        }
+      }
+      const approvedEmail = job.preparedEmail ? null : await loadApprovedPersonalEmail(job.shop, job.topic);
       const prepared = await prepareEmail(
         job.shop,
         job.topic,
         JSON.parse(job.payload) as Record<string, unknown>,
         brandIdentity,
+        approvedEmail,
+        job.preparedEmail ? JSON.parse(job.preparedEmail) as SendEmailInput : undefined,
       );
       if (!prepared) {
         await db.emailJob.update({ where: { id: job.id }, data: { status: "skipped", lastError: null } });
@@ -326,22 +411,31 @@ export async function processPendingEmailJobs(limit = 10) {
         continue;
       }
       const unsubscribeLink = unsubscribeUrl({ shop: job.shop, email: prepared.to });
-      const providerMessageId = await sendEmail({
+      const config = getEmailDeliveryConfig();
+      const delivery: SendEmailInput = job.preparedEmail ? JSON.parse(job.preparedEmail) as SendEmailInput : {
         ...prepared,
+        from: `${config.fromName} <${config.fromEmail}>`,
         html: withComplianceFooter(prepared.html, { postalLine: footer.line, unsubscribeUrl: unsubscribeLink }),
         headers: listUnsubscribeHeaders(unsubscribeLink),
+      };
+      const ready = await db.emailJob.updateMany({
+        where: { id: job.id, status: "processing" },
+        data: { preparedEmail: JSON.stringify(delivery), deliveryStartedAt: job.deliveryStartedAt ?? new Date() },
       });
+      if (ready.count !== 1 || await isSuppressed({ shop: job.shop, email: delivery.to })) continue;
+      const providerMessageId = await sendEmail(delivery);
       await db.emailJob.update({
         where: { id: job.id },
-        data: { status: "sent", providerMessageId, sentAt: new Date(), lastError: null },
+        data: { status: "sent", providerMessageId, sentAt: new Date(), lastError: null, recipient: delivery.to.toLowerCase() },
       });
+      await recordUsage(job.shop, "email_sent").catch((error) => console.error("Email usage count failed:", error));
       results.sent += 1;
     } catch (error) {
       const attempts = job.attempts + 1;
-      const exhausted = attempts >= 5;
+      const exhausted = attempts >= 5 || Boolean(job.deliveryStartedAt && Date.now() - job.deliveryStartedAt.getTime() >= 23 * 60 * 60_000);
       const message = error instanceof Error ? error.message : "Unknown email job error";
-      await db.emailJob.update({
-        where: { id: job.id },
+      await db.emailJob.updateMany({
+        where: { id: job.id, status: "processing" },
         data: {
           status: exhausted ? "failed" : "pending",
           availableAt: new Date(Date.now() + Math.min(60, 2 ** attempts) * 60_000),
@@ -349,6 +443,8 @@ export async function processPendingEmailJobs(limit = 10) {
         },
       });
       results[exhausted ? "failed" : "retried"] += 1;
+    } finally {
+      clearInterval(heartbeat);
     }
   }
   return results;

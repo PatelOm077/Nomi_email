@@ -19,6 +19,11 @@ import {
 } from "./types";
 import { estimateUsageMicros, type AiUsage } from "./budget.server";
 import { auditCompiledEmail } from "./email-quality";
+import type { BrandEmailPlans, BrandKitPhoto } from "./photo-kit.server";
+import { LIFECYCLE_SECTION_TYPES, sectionBuildLibrary } from "../email-engine/section-library";
+import { LIFECYCLE_EMAIL_ROLES } from "../email-engine/lifecycle-email-roles";
+import { hardenMobileBoxSizing } from "../email-engine/mobile-box-sizing";
+import { needsPersonalSlots, personalSlotProblems } from "../email-engine/personal-slots";
 
 type ModelResult<T> = { value: T; usage: AiUsage; costMicros: number };
 
@@ -243,9 +248,10 @@ function finalSystemPrompt(input: {
 
 Quality contract:
 - Treat every email as individually art-directed: a distinct subject, preheader, eyebrow, headline, body, CTA, job, and visual rhythm.
+- Each email has a fixed role (emailRoles below): write its copy and brief to do that job and nothing else, so no two emails in a flow share an intent.
 - Do not classify designs into a fixed menu of layouts. Write a free-form creativeBrief for every email that states its visual thesis, hierarchy, image role, pacing, CTA relationship, and the specific ways its silhouette must differ from sibling emails.
 - Subjects must be 3–64 characters. Preheaders add a different useful thought. Headlines are complete, specific ideas. Bodies contain at least 16 useful words and earn the send.
-- Select exact productIds only when real supplied products strengthen the idea. Marketing and recovery messages with products need a real destination; relationship messages may be image-light when that is the stronger composition. Exception: welcome-1 is the merchant's very first message, and when the store has at least one real product, it must select one as a hero introduction — write the creativeBrief around actually showing that product, not a product-free brand statement.
+- Select exact productIds only when real supplied products strengthen the idea. Marketing and recovery messages with products need a real destination; relationship messages may be image-light when that is the stronger composition. Exception: welcome-1 is the merchant's very first message, and when the store has at least one real product, it must select one as a hero introduction — write the creativeBrief around actually showing that product, not a product-free brand statement. Every welcome email (welcome-1, welcome-2, welcome-3) is the brand's first impression and its brief must call for a genuine visual moment near the top — a brand photograph or a real product at hero scale; never brief an image-free or thumbnail-only welcome email.
 - Use the store evidence to invent the art direction, never a generic ecommerce design system. Limited product count is not a reason to repeat a layout: vary scale, sequence, whitespace, crop, grouping, typography, information density, and narrative role.
 - Give every lifecycle flow its own visual grammar based on its job. Shared brand colour and type character should create recognition, while welcome, consideration, cart recovery, post-purchase care, and win-back differ clearly in pacing, density, image role, hierarchy, and CTA relationship. Do not encode those differences as a fixed menu of layouts.
 - Carry the approved palette, typography character, image treatment, button treatment, motif, preferred vocabulary, and layout rules through the whole family without repeating one gimmick.
@@ -255,7 +261,7 @@ Quality contract:
 - Use only supported facts; never invent discounts, scarcity, reviews, URLs, customer attributes, materials, certifications, performance, or product claims. CTA labels name the action but contain no URL.
 - Keep post-purchase lifecycle messages calmer than promotional messages.
 
-The result is rejected before persistence if it misses this contract.\n\n${JSON.stringify({ ...input, lifecycleSlots: buildLifecycleSlots(input.shopName) })}`;
+The result is rejected before persistence if it misses this contract.\n\n${JSON.stringify({ ...input, lifecycleSlots: buildLifecycleSlots(input.shopName), emailRoles: LIFECYCLE_EMAIL_ROLES })}`;
 }
 
 export async function finalizeWithSonnet(input: {
@@ -359,7 +365,30 @@ const familyCritiqueSchema = z.object({
 // regardless of which pass last wrote a given email. Skipping this in any
 // one of those three call sites means emails that pass through it lose
 // their seams silently.
-const SEAM_TAGGING_INSTRUCTION = `Editable seams: every finished email must mark the handful of elements a merchant can safely hand-edit later, without changing any other rule above. When the composition uses a short eyebrow, kicker, or label line above the headline, wrap its exact text in an element with data-nomi-seam="eyebrow"; omit this seam entirely when there is no such line. Wrap the exact headline text in an element with data-nomi-seam="headline". Wrap the exact body copy text in an element with data-nomi-seam="body". Wrap only the CTA link's visible label text (not the whole button) in an element with data-nomi-seam="cta-label"; omit this seam entirely when there is no CTA. Wrap the exact footer/compliance copy text (the plain-text sign-off, address, and unsubscribe mention) in a single element with data-nomi-seam="footer". On every <img>: add data-nomi-seam="logo" to the brand logo image; add data-nomi-seam="product" plus data-nomi-product-id="<the exact product id>" to a requiredProductImages photo, and add that same data-nomi-seam="product" data-nomi-product-id="<id>" to its enclosing <a> when the image links to that product, so the photo and its link stay paired; add data-nomi-seam="image" to any other photograph. Every seam-tagged <img> must also carry explicit width and height attributes matching its rendered size, and a real, specific alt attribute. These attributes are inert metadata: never style them, never let them affect layout, and never omit them from a seam-eligible element.`;
+const SEAM_TAGGING_INSTRUCTION = `Editable seams: every finished email must mark the handful of elements a merchant can safely hand-edit later, without changing any other rule above. When the composition uses a short eyebrow, kicker, or label line above the headline, wrap its exact text in an element with data-nomi-seam="eyebrow"; omit this seam entirely when there is no such line. Wrap the exact headline text in an element with data-nomi-seam="headline". Wrap the exact body copy text in an element with data-nomi-seam="body". Wrap only the CTA link's visible label text (not the whole button) in an element with data-nomi-seam="cta-label"; omit this seam entirely when there is no CTA. Wrap the exact footer/compliance copy text (the plain-text sign-off, address, and unsubscribe mention) in a single element with data-nomi-seam="footer". On every <img>: add data-nomi-seam="logo" to the brand logo image; add data-nomi-seam="product" plus data-nomi-product-id="<the exact product id>" to a requiredProductImages photo, and add that same data-nomi-seam="product" data-nomi-product-id="<id>" to its enclosing <a> when the image links to that product, so the photo and its link stay paired; add data-nomi-seam="image" to any other photograph, including every assigned brand photograph. Every other piece of customer-facing copy is editable too: wrap each additional heading, pull line, caption, card line, step or benefit line, and closing line in its own element with data-nomi-seam="text", and give every button other than the primary CTA data-nomi-seam="button" on an element wrapping only its visible label text inside its <a>. Style that copy however the design calls for; a seam simply wraps the line as designed. Never put a text or button seam on the eyebrow, headline, body, CTA label, or footer (they keep their own seams), and never on a price or a product name. Every seam-tagged <img> must also carry explicit width and height attributes matching its rendered size, and a real, specific alt attribute. These attributes are inert metadata: never style them, never let them affect layout, and never omit them from a seam-eligible element.`;
+
+// The welcome flow is the brand's first impression. Merchants judged
+// image-free welcomes (typography only, or a lone thumbnail) as the weakest
+// emails in the family, so this rule overrides a creative brief that asks
+// for one — including briefs saved before this rule existed. Shared by every
+// pass that writes or rewrites HTML.
+const WELCOME_VISUAL_RULE = `Welcome flow (welcome-1, welcome-2, welcome-3): these are the brand's first impression and must look like it. Each welcome email opens with a genuine visual moment near the top — its assigned brand photograph when it has one, otherwise a real supplied product photo shown at hero scale (at least 280px wide, ideally the full content width). Never shrink a product photo to a thumbnail as an email's main image. Typographic restraint is welcome, an image-free welcome is not: this overrides any creative brief that asks for a welcome email without photography.`;
+
+// The abandoned-cart and review-request emails are sent pre-generated: the
+// worker fills the customer's real items and checkout/review link by code
+// (email-engine/personal-slots.ts) instead of calling Claude per send. This
+// is the markup contract that filler reads; validateCandidateEmails enforces
+// it so a miss goes to repair.
+const PERSONAL_SLOT_INSTRUCTION = `Personal slots (cart-1, cart-2, cart-3, review-request only): these emails are sent to each customer with their own items filled in by code, so they must carry this exact markup. Show the order or cart items in one container with data-nomi-slot="items" that holds exactly one item row with data-nomi-item — a single preview row, never a second copy; the sender repeats it per item. Fill that preview row with a real supplied product. Inside the row: exactly one <img data-nomi-field="image"> of that product (with its data-nomi-seam="product" and data-nomi-product-id as usual), exactly one element with data-nomi-field="title" holding only its name, an element with data-nomi-field="price" holding only its price (or empty when none is given), an element with data-nomi-field="quantity" left empty, and wrap the photo in <a data-nomi-field="item-url"> pointing at the product URL. The row must look right with one item and with several stacked. Give the email's primary call-to-action <a> data-nomi-field="action-url" and point it at the storefront URL; the sender replaces it with the customer's own checkout or product link. Other emails never use these attributes. The item row is the email's product moment, not the whole composition: design the rest freely.`;
+
+// When the family creative director planned an email
+// (email-engine/lifecycle-photo-kit-plan.ts), the writer builds exactly that
+// plan with the same section build guide campaigns use.
+const SECTION_PLAN_INSTRUCTION = `Section plans: a recipe may carry a sectionPlan (with a concept) from the family creative director. When it does, build exactly those sections, in that order, each fulfilling its stated purpose with the products and photo it names — the plan is the composition, and it takes precedence over any conflicting layout idea in the creative brief (use the brief for voice, mood, and copy). A section's imageKey names one of that recipe's assignedPhotos by key. Build each section as described here, in this brand's palette, typography, and motif, from nested tables, inline styles, borders, background colours, and typography:
+${sectionBuildLibrary(LIFECYCLE_SECTION_TYPES)}
+Without a sectionPlan, compose freely from the creative brief.`;
+
+export { hardenMobileBoxSizing };
 
 function normalizedUrl(value: string) {
   try {
@@ -424,6 +453,8 @@ function validateCandidateEmails(input: {
   recipes: LifecycleRecipe[];
   evidence: BrandEvidence;
   brandSystem: BrandSystem;
+  extraAllowedImageUrls?: string[];
+  requirePersonalSlots?: boolean;
 }) {
   const valid: Array<{ id: LifecycleRecipe["id"]; html: string }> = [];
   const failed: Array<{
@@ -435,6 +466,13 @@ function validateCandidateEmails(input: {
     const recipe = input.recipes.find(({ id }) => id === candidate.id);
     if (!recipe) continue;
     try {
+      // Generation-time only: the seam editor also runs validateCreativeEmail,
+      // and an older approved family without slots must stay editable.
+      if (input.requirePersonalSlots !== false && needsPersonalSlots(candidate.id)) {
+        const slotProblems = personalSlotProblems(candidate.html);
+        if (slotProblems.length)
+          throw new Error(`${candidate.id} is missing its personal slots: ${slotProblems.join("; ")}.`);
+      }
       valid.push({
         id: candidate.id,
         html: validateCreativeEmail({
@@ -442,6 +480,7 @@ function validateCandidateEmails(input: {
           recipe,
           evidence: input.evidence,
           brandSystem: input.brandSystem,
+          extraAllowedImageUrls: input.extraAllowedImageUrls,
         }),
       });
     } catch (error) {
@@ -530,7 +569,7 @@ export function validateCreativeEmail(input: {
     throw new Error(
       `${input.recipe.id} leaked the retired platform name into merchant-facing copy.`,
     );
-  return html;
+  return hardenMobileBoxSizing(html);
 }
 
 // Concrete, mutually-exclusive structural axes a regenerate can be forced
@@ -597,6 +636,21 @@ export async function generateCreativeEmailFamilyWithSonnet(input: {
    * variation itself rather than leave it to the model.
    */
   regenerateCompositionDirective?: string;
+  /**
+   * The merchant's own brief for the regenerateOnlyId email, from the Flow
+   * Editor regenerate modal: what it should say, which real products it
+   * features, and any real discount code. Overrides the creative brief and
+   * section plan for content; the Brand System still governs the look.
+   */
+  merchantDirection?: string;
+  /**
+   * The shop's brand photo kit (brand-studio/photo-kit.server.ts). Each
+   * photo lists the emails it was planned for; those emails receive it as
+   * assignedPhotos and every kit URL is allowed by validation.
+   */
+  photoKit?: BrandKitPhoto[];
+  /** Per-email section plans from the family creative director. */
+  emailPlans?: BrandEmailPlans;
   onCheckpoint?: (checkpoint: {
     rendered: Record<string, string>;
     flowId: string;
@@ -618,6 +672,23 @@ export async function generateCreativeEmailFamilyWithSonnet(input: {
       `Brand identity mismatch: expected ${input.expectedShopName}, received ${input.evidence.shopName}. No AI request was made.`,
     );
   const rendered: Record<string, string> = {};
+  const kitImageUrls = (input.photoKit ?? []).map(({ url }) => url);
+  const assignedPhotos = (id: string) =>
+    (input.photoKit ?? [])
+      .filter(({ emailIds }) => emailIds.includes(id))
+      .map(({ key, url, alt, width, height, role, productIds }) => ({
+        key,
+        url,
+        alt,
+        width,
+        height,
+        role,
+        showsProducts: productIds,
+      }));
+  const planFor = (id: string) => {
+    const plan = input.emailPlans?.[id];
+    return plan?.sections.length ? { concept: plan.concept, sectionPlan: plan.sections } : {};
+  };
   const previousHtmlForRegenerateTarget = input.regenerateOnlyId
     ? input.existingRendered?.[input.regenerateOnlyId]
     : undefined;
@@ -638,6 +709,7 @@ export async function generateCreativeEmailFamilyWithSonnet(input: {
         recipe,
         evidence: input.evidence,
         brandSystem: input.brandSystem,
+        extraAllowedImageUrls: kitImageUrls,
       });
     } catch {
       // A stale or invalid checkpoint is regenerated instead of trusted.
@@ -670,13 +742,25 @@ Family awareness: you are receiving the creative briefs for all thirteen emails.
 
 Product contract: productIds are exact requirements, not suggestions. For every requested product, include its requiredProductImages URL in an <img src> exactly as supplied. When productIds are present, link at least one action to one of the listed requiredDestinations. Do not omit a requested image in order to simplify the composition.
 
-Technical boundaries: return complete standalone HTML documents beginning with <!doctype html>. Use a centered 600px table foundation, nested presentation tables, inline styles, and a small <style> block only for responsive media queries. Preserve aspect ratios. No scripts, forms, SVG, base64, gradients, CSS background-image URLs, webfont requests, invented images, invented links, placeholders, or href="#". Body copy is at least 15px and primary CTAs are at least 44px tall. Only use supplied logo/product image URLs and supplied storefront/product URLs. When no logo URL is supplied, render the merchant brand name as a deliberate typographic wordmark; never substitute a platform mark. If no destination exists, omit the CTA. Compliance links are injected later, so mention them as plain footer text without inventing a URL. Never mention the email platform; only the supplied merchant brand may appear.
+Brand photographs: a recipe may carry assignedPhotos — AI photographs made for this brand and planned for this email. Use each assigned photo exactly once as its own <img> at its exact URL, as a deliberate visual moment (full width or a large block) where it serves the creative brief, with its supplied alt text and its width attribute with height:auto; never crop it to a fixed height and never lay text over it. A photo that shows products does not replace those products' real photos wherever a product itself is presented. Emails without assignedPhotos use no brand photographs.
+
+Call to action: every email must include at least one clear primary CTA button linking to a supplied destination — the storefront URL is always supplied for exactly this — placed where it serves the composition.
+
+Technical boundaries: return complete standalone HTML documents beginning with <!doctype html>. Use a centered 600px table foundation, nested presentation tables, inline styles, and a small <style> block only for responsive media queries. Preserve aspect ratios. No scripts, forms, SVG, base64, gradients, CSS background-image URLs, webfont requests, invented images, invented links, placeholders, or href="#". Body copy is at least 15px and primary CTAs are at least 44px tall. Only use supplied logo, product, and assignedPhotos image URLs and supplied storefront/product URLs. When no logo URL is supplied, render the merchant brand name as a deliberate typographic wordmark; never substitute a platform mark. If no destination exists, omit the CTA. Compliance links are injected later, so mention them as plain footer text without inventing a URL. Never mention the email platform; only the supplied merchant brand may appear.
 
 ${SEAM_TAGGING_INSTRUCTION}
 
+${WELCOME_VISUAL_RULE}
+
+${PERSONAL_SLOT_INSTRUCTION}
+
+${SECTION_PLAN_INSTRUCTION}
+
 Creative material: you are encouraged, not merely permitted, to invent original decorative objects and motifs whenever they would make the composition feel considered rather than a plain photo-and-paragraph block — a stamp, a ribbon, a ticket stub, a wax seal, a compass, a leaf, a folded corner, a simple line-built icon, whatever suits this brand. Build them entirely from table cells, borders, colour fields, spacing, numbering, and typography — no <img>, no SVG, no CSS backgrounds or gradients. For review-request specifically, render a decorative five-star row this same table/typography way as a visual accent near the headline or product; keep it purely decorative — never styled or labelled as something to click, tap, or fill in, since email HTML cannot make a rating input functional. You are not limited to arranging the supplied assets, but you must not fabricate an external image or product fact.
 
-Copy boundaries: use the approved recipe as the semantic source, but improve line breaks and microcopy presentation when needed. Never invent offers, discounts, scarcity, product properties, customer behavior, reviews, addresses, or claims.`,
+Copy boundaries: use the approved recipe as the semantic source, but improve line breaks and microcopy presentation when needed. Never invent offers, discounts, scarcity, product properties, customer behavior, reviews, addresses, or claims.
+
+Merchant direction: a recipe may carry merchantDirection, the merchant's own brief for this email. It is authoritative for what the email says and features — follow it over the creative brief and any sectionPlan, while keeping this email's lifecycle job, the Brand System, and every technical rule above. Build the composition around the products it names (they are in this recipe's productIds). A discount code it gives is real: show that exact code, value, and dates prominently, and never alter it or add another offer.`,
             messages: [
               {
                 role: "user",
@@ -698,6 +782,8 @@ Copy boundaries: use the approved recipe as the semantic source, but improve lin
                   recipes: pendingRecipes.map((recipe) => ({
                     ...recipe,
                     ...requiredProductContract(recipe, input.evidence),
+                    assignedPhotos: assignedPhotos(recipe.id),
+                    ...planFor(recipe.id),
                     ...((recipe.id === input.regenerateOnlyId &&
                       previousHtmlForRegenerateTarget) ||
                     (input.regenerateAll &&
@@ -713,6 +799,9 @@ Copy boundaries: use the approved recipe as the semantic source, but improve lin
                             input.regenerateCompositionDirective ??
                             REGENERATE_COMPOSITION_DIRECTIVES[0],
                         }
+                      : {}),
+                    ...(recipe.id === input.regenerateOnlyId && input.merchantDirection
+                      ? { merchantDirection: input.merchantDirection }
                       : {}),
                   })),
                 }),
@@ -752,6 +841,7 @@ Copy boundaries: use the approved recipe as the semantic source, but improve lin
         recipes: pendingRecipes,
         evidence: input.evidence,
         brandSystem: input.brandSystem,
+        extraAllowedImageUrls: kitImageUrls,
       });
       Object.assign(
         rendered,
@@ -770,9 +860,15 @@ Copy boundaries: use the approved recipe as the semantic source, but improve lin
               },
               system: `You are a senior email HTML engineer repairing a small set of otherwise art-directed emails that failed deterministic safety checks. Return complete standalone HTML only for the requested IDs. Preserve each email's creative idea and visual distinctiveness while fixing every listed validation error.
 
-Technical boundaries: begin each document with <!doctype html>. Use exactly one <h1>. Include a mobile viewport declaration and a centered max-width 600px table foundation. Use nested presentation tables, inline styles, and only a small responsive <style> block. Preserve image aspect ratios. No scripts, forms, SVG, base64, gradients, CSS background-image URLs, webfonts, invented images, invented links, placeholders, or href="#". Body copy is at least 15px and primary CTAs are at least 44px tall. Use only supplied images and destinations.
+Technical boundaries: begin each document with <!doctype html>. Use exactly one <h1>. Include a mobile viewport declaration and a centered max-width 600px table foundation. Use nested presentation tables, inline styles, and only a small responsive <style> block. Preserve image aspect ratios. No scripts, forms, SVG, base64, gradients, CSS background-image URLs, webfonts, invented images, invented links, placeholders, or href="#". Body copy is at least 15px and primary CTAs are at least 44px tall. Use only supplied images and destinations; assignedPhotos URLs are supplied images and must stay in the email exactly once each.
 
 Product contract: every requiredProductImages URL must appear in an <img src> exactly as supplied. If requiredProductImages is non-empty, at least one <a href> must use a listed requiredDestinations URL. These requirements are deterministic and the repair fails if even one is omitted.
+
+${WELCOME_VISUAL_RULE}
+
+${PERSONAL_SLOT_INSTRUCTION}
+
+${SECTION_PLAN_INSTRUCTION}
 
 ${SEAM_TAGGING_INSTRUCTION} The HTML you are repairing may already carry these attributes — preserve them, and add any that are missing.`,
               messages: [
@@ -792,6 +888,8 @@ ${SEAM_TAGGING_INSTRUCTION} The HTML you are repairing may already carry these a
                         id,
                         recipe,
                         ...requiredProductContract(recipe, input.evidence),
+                        assignedPhotos: assignedPhotos(id),
+                        ...planFor(id),
                         error,
                         html,
                       };
@@ -844,6 +942,10 @@ ${SEAM_TAGGING_INSTRUCTION} The HTML you are repairing may already carry these a
           recipes: pendingRecipes,
           evidence: input.evidence,
           brandSystem: input.brandSystem,
+          extraAllowedImageUrls: kitImageUrls,
+          // A cart/review email still missing its slots after repair is kept:
+          // the worker falls back to generating that send instead.
+          requirePersonalSlots: false,
         });
         Object.assign(
           rendered,
@@ -939,11 +1041,17 @@ ${SEAM_TAGGING_INSTRUCTION} The HTML you are repairing may already carry these a
             },
             system: `You are the senior email art director revising a small set of emails after a family-wide critique. Return complete standalone email-safe HTML for only the requested IDs. Make structural changes, not cosmetic swaps. Keep the approved brand identity and factual boundaries, but change the silhouette, hierarchy, image role, section rhythm, CTA relationship, and footer treatment as directed.
 
-Technical boundaries: begin each document with <!doctype html>. Use a centered max-width 600px table foundation, nested presentation tables, inline styles, and a small responsive <style> block. Preserve image aspect ratios. No scripts, forms, SVG, base64, gradients, CSS background-image URLs, webfonts, invented images, invented links, placeholders, or href="#". Body copy is at least 15px and primary CTAs are at least 44px tall. Use only supplied images and destinations.
+Technical boundaries: begin each document with <!doctype html>. Use a centered max-width 600px table foundation, nested presentation tables, inline styles, and a small responsive <style> block. Preserve image aspect ratios. No scripts, forms, SVG, base64, gradients, CSS background-image URLs, webfonts, invented images, invented links, placeholders, or href="#". Body copy is at least 15px and primary CTAs are at least 44px tall. Use only supplied images and destinations; keep each recipe's assignedPhotos in the email exactly once.
 
 Creative material: invent original decorative objects and motifs (a stamp, a ribbon, a ticket stub, a compass, a leaf, a folded corner, a line-built icon) built from table cells, borders, colour fields, spacing, and typography whenever that would sharpen the requested change. For review-request, a decorative five-star row built the same way is encouraged as a visual accent — purely decorative, never styled as something to click or fill in.
 
-${SEAM_TAGGING_INSTRUCTION}`,
+${SEAM_TAGGING_INSTRUCTION}
+
+${WELCOME_VISUAL_RULE}
+
+${PERSONAL_SLOT_INSTRUCTION}
+
+${SECTION_PLAN_INSTRUCTION}`,
             messages: [
               {
                 role: "user",
@@ -953,7 +1061,11 @@ ${SEAM_TAGGING_INSTRUCTION}`,
                   products: input.evidence.products,
                   storefrontUrl: input.evidence.storefrontUrl,
                   logoUrl: input.evidence.assets?.logoUrl,
-                  recipes: revisionRecipes,
+                  recipes: revisionRecipes.map((recipe) => ({
+                    ...recipe,
+                    assignedPhotos: assignedPhotos(recipe.id),
+                    ...planFor(recipe.id),
+                  })),
                   revisions,
                   existingFamily: rendered,
                 }),
@@ -988,6 +1100,7 @@ ${SEAM_TAGGING_INSTRUCTION}`,
           recipe,
           evidence: input.evidence,
           brandSystem: input.brandSystem,
+          extraAllowedImageUrls: kitImageUrls,
         });
       }
     }

@@ -1,0 +1,39 @@
+# Public "Nomi Email Marketing" app (Shopify App Store distribution, Shopify
+# billing). Replaces the custom-distribution "Nomi" app in shopify.app.fly.toml
+# once the switch-over happens; both point at the same Fly deployment.
+# Use with: shopify app deploy --config public
+# Scopes are the minimum Nomi uses (no template metaobject/product writes).
+
+client_id = "ef35bfc0c342a705b8758e3ed47d2f53"
+application_url = "https://nomi-email.fly.dev"
+embedded = true
+name = "Nomi Email Marketing"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_products,read_orders,read_fulfillments,read_customers,write_customers,read_themes,read_files,write_files"
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/email-events"
+  topics = [ "orders/create", "fulfillments/update", "checkouts/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/compliance"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
+[auth]
+redirect_urls = [ "https://nomi-email.fly.dev/auth/callback" ]
+
+[build]
+automatically_update_urls_on_dev = false

@@ -28,8 +28,9 @@ Reject when any of these is true:
 2. Product fidelity: a product that should appear is missing, or its shape, colour, material, cap, proportions, or label differ noticeably from its reference photo; or an extra product, variant, or packaging appears that the store does not sell. When the brief says no products, any identifiable product or packaging is a failure.
 3. Text: any legible or pseudo-text, letters, logos, watermarks, or signage — except a product's own label exactly as in its reference photo.
 4. Anatomy and artefacts: malformed hands or fingers, extra limbs, warped faces, melted or duplicated objects, obvious AI smearing.
-5. Taste: extreme macro of skin or body parts, product smeared on skin, anything clinical, bodily, or unsettling; anything off-brand for the described identity.
-6. It does not match the brief's subject or composition in a way that matters.
+5. People and bodies: any hand, finger, arm, skin, or other body part in frame, or a product being applied, rubbed, dabbed, held, or used on a person. The only exception is a worn product (clothing, accessories, jewellery) on a figure seen from behind or cropped at the shoulders, with no close-up of skin or face. Products belong in styled still life, texture on a surface, never on a body.
+6. Taste: anything clinical, bodily, or unsettling; anything off-brand for the described identity.
+7. It does not match the brief's subject or composition in a way that matters.
 
 Pass only when none apply. issues lists each concrete problem in one short sentence, written so it can be fed back to the image model as a correction. Empty when passing.`;
 

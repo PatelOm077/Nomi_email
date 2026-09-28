@@ -40,6 +40,14 @@ const direction = {
 const safeHtml = (id: string, extra = "") =>
   `<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body style="background:#fffaf3;color:#1d1a18"><table role="presentation" style="max-width:600px;color:#b96f52;border-color:#d8cfc3"><tr><td><h1>${id}</h1>${extra}</td></tr></table></body></html>`;
 
+// Cart and review emails must carry the personal-slot markup the send
+// worker fills (email-engine/personal-slots.ts).
+const slotted = (id: string, product: { imageUrl: string; productUrl: string }, storefrontUrl: string) =>
+  safeHtml(
+    id,
+    `<table data-nomi-slot="items"><tr data-nomi-item><td><a data-nomi-field="item-url" href="${product.productUrl}"><img data-nomi-field="image" src="${product.imageUrl.replace(/&/g, "&amp;")}" alt="Canopy" width="96"></a><p data-nomi-field="title">Canopy</p><p data-nomi-field="quantity"></p><p data-nomi-field="price"></p></td></tr></table><a data-nomi-field="action-url" href="${storefrontUrl}">Return</a>`,
+  );
+
 const modelResponse = (parsed_output: unknown, inputTokens = 10) => ({
   stop_reason: "end_turn",
   parsed_output,
@@ -92,10 +100,7 @@ describe("Brand Studio AI generation guards", () => {
             emails: [
               {
                 id: "cart-3",
-                html: safeHtml(
-                  "cart-3",
-                  `<a href="${product.productUrl}">Return</a><img src="${product.imageUrl.replace("&", "&amp;")}" alt="Canopy" width="600">`,
-                ),
+                html: slotted("cart-3", product, evidence.storefrontUrl),
               },
             ],
           }),
@@ -225,14 +230,14 @@ describe("Brand Studio AI generation guards", () => {
     const recipes = LUMEN_DEMO_RECIPES;
     const existingRendered = Object.fromEntries(
       recipes
-        .filter(({ id }) => id !== "cart-3")
+        .filter(({ id }) => id !== "winback-3")
         .map(({ id }) => [id, safeHtml(id)]),
     );
 
     streamMessage.mockReturnValueOnce({
       finalMessage: async () =>
         modelResponse({
-          emails: [{ id: "cart-3", html: safeHtml("cart-3") }],
+          emails: [{ id: "winback-3", html: safeHtml("winback-3") }],
         }),
     });
 
@@ -248,7 +253,7 @@ describe("Brand Studio AI generation guards", () => {
 
     // Only the one pending flow's generation call — no critique call at all.
     expect(streamMessage).toHaveBeenCalledTimes(1);
-    expect(result.value["cart-3"]).toContain("cart-3");
+    expect(result.value["winback-3"]).toContain("winback-3");
     for (const [id, html] of Object.entries(existingRendered)) {
       expect(result.value[id]).toBe(html);
     }
@@ -257,21 +262,21 @@ describe("Brand Studio AI generation guards", () => {
   it("regenerateOnlyId trusts every sibling verbatim, even an invalid one, and asks Claude to vary from the previous HTML", async () => {
     const recipes = LUMEN_DEMO_RECIPES;
     const staleSibling = "<!doctype html><html><body>too short to pass audit</body></html>";
-    const previousHtml = safeHtml("cart-3", "<p>old composition</p>");
+    const previousHtml = safeHtml("winback-3", "<p>old composition</p>");
     const existingRendered = {
       ...Object.fromEntries(
         recipes
-          .filter(({ id }) => id !== "cart-3" && id !== "winback-1")
+          .filter(({ id }) => id !== "winback-3" && id !== "winback-1")
           .map(({ id }) => [id, safeHtml(id)]),
       ),
       "winback-1": staleSibling,
-      "cart-3": previousHtml,
+      "winback-3": previousHtml,
     };
 
     streamMessage.mockReturnValueOnce({
       finalMessage: async () =>
         modelResponse({
-          emails: [{ id: "cart-3", html: safeHtml("cart-3-new", "<p>new composition</p>") }],
+          emails: [{ id: "winback-3", html: safeHtml("winback-3-new", "<p>new composition</p>") }],
         }),
     });
 
@@ -283,19 +288,19 @@ describe("Brand Studio AI generation guards", () => {
       refinement: null,
       existingRendered,
       skipCritique: true,
-      regenerateOnlyId: "cart-3",
+      regenerateOnlyId: "winback-3",
     });
 
     // Only one Sonnet call, for the single targeted recipe.
     expect(streamMessage).toHaveBeenCalledTimes(1);
-    expect(result.value["cart-3"]).toContain("cart-3-new");
+    expect(result.value["winback-3"]).toContain("winback-3-new");
     // The stale sibling is trusted as-is, never re-validated or sent to Claude.
     expect(result.value["winback-1"]).toBe(staleSibling);
 
     const payload = JSON.parse(streamMessage.mock.calls[0][0].messages[0].content);
     expect(payload.recipes).toHaveLength(1);
     expect(payload.recipes[0]).toMatchObject({
-      id: "cart-3",
+      id: "winback-3",
       previousHtml,
       regenerateInstruction: expect.stringContaining("Do not preserve the old layout"),
     });
@@ -373,8 +378,8 @@ describe("Brand Studio AI generation guards", () => {
         finalMessage: async () =>
           modelResponse({
             emails: [
-              { id: "cart-1", html: safeHtml("cart-1") },
-              { id: "cart-2", html: safeHtml("cart-2") },
+              { id: "cart-1", html: slotted("cart-1", product, evidence.storefrontUrl) },
+              { id: "cart-2", html: slotted("cart-2", product, evidence.storefrontUrl) },
               { id: "cart-3", html: safeHtml("cart-3") },
             ],
           }),

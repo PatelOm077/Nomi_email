@@ -12,6 +12,7 @@ import {
   applyImageSeamEdit,
   applyTextSeamEdit,
   findSeams,
+  isButtonSeamId,
   isKnownTextSeamId,
   validateSeamEditedHtml,
   type Seam,
@@ -206,7 +207,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const trimmed = text.trim();
       if (!trimmed) return { ok: false as const, error: "This can't be left empty." } satisfies SeamEditActionResult;
       let href: string | undefined;
-      if (seamId === "cta-label" && typeof urlRaw === "string" && urlRaw.trim()) {
+      if (isButtonSeamId(seamId) && typeof urlRaw === "string" && urlRaw.trim()) {
         const candidateHref = urlRaw.trim();
         if (!candidateHref.startsWith("https://"))
           return { ok: false as const, error: "The button link must be a full https:// address." } satisfies SeamEditActionResult;
@@ -442,7 +443,7 @@ function SeamPanel({
         <div className="v9-empty-state">
           <div className="v9-empty-icon" aria-hidden="true">↖</div>
           <p>Select something to edit</p>
-          <span>Click the eyebrow, headline, body copy, CTA text, footer copy, logo, or any photo in the email.</span>
+          <span>Click any text, button, logo, or photo in the email.</span>
         </div>
       </aside>
     );
@@ -472,6 +473,13 @@ const SEAM_LABELS: Record<string, string> = {
   footer: "Footer copy",
 };
 
+// Repeatable seams (`text:N`, `button:N`) share one label per kind.
+function seamLabel(id: string): string {
+  if (id.startsWith("text:")) return "Text";
+  if (id.startsWith("button:")) return "Button text";
+  return SEAM_LABELS[id] ?? id;
+}
+
 function TextSeamPanel({
   seam,
   onSave,
@@ -480,9 +488,9 @@ function TextSeamPanel({
   onSave: (text: string, url?: string) => void;
 }) {
   const [value, setValue] = useState(seam.text);
-  const isCta = seam.id === "cta-label";
+  const isCta = seam.id === "cta-label" || seam.id.startsWith("button:");
   const [url, setUrl] = useState(seam.url ?? "");
-  const isLong = seam.id === "body" || seam.id === "footer";
+  const isLong = seam.id === "body" || seam.id === "footer" || seam.id.startsWith("text:");
   const isEmpty = !value.trim();
   const urlDirty = isCta && url.trim() !== (seam.url ?? "").trim();
   const dirty = value.trim() !== seam.text.trim() || urlDirty;
@@ -492,7 +500,7 @@ function TextSeamPanel({
       <div className="v9-panel">
         <div className="v9-panel-head">
           <div>
-            <p className="v9-kicker">{SEAM_LABELS[seam.id] ?? seam.id}</p>
+            <p className="v9-kicker">{seamLabel(seam.id)}</p>
             <h3>Edit text</h3>
           </div>
         </div>
@@ -500,7 +508,7 @@ function TextSeamPanel({
           {isLong ? (
             <textarea rows={6} value={value} onChange={(e) => setValue(e.target.value)} maxLength={700} />
           ) : (
-            <input value={value} onChange={(e) => setValue(e.target.value)} maxLength={seam.id === "cta-label" ? 40 : 120} />
+            <input value={value} onChange={(e) => setValue(e.target.value)} maxLength={isCta ? 40 : 120} />
           )}
           {isEmpty ? <p className="v9-error" role="alert">This can't be left empty — Save stays off until there's text here.</p> : null}
           {isCta ? (
@@ -623,7 +631,7 @@ function ImageSeamPanel({
       </div>
       <div className="v9-panel-body">
         {tab === "shopify" && seam.kind !== "logo" && (
-          <div className="v9-asset-list">
+          <div className="v9-asset-list" style={{ gridAutoRows: "max-content" }}>
             {shopifyFiles.length === 0 && <p className="v9-hint">No Shopify files found.</p>}
             {shopifyFiles.map((file) => (
               <button
@@ -638,7 +646,7 @@ function ImageSeamPanel({
           </div>
         )}
         {tab === "shopify" && seam.kind === "logo" && logoUrl && (
-          <div className="v9-asset-list">
+          <div className="v9-asset-list" style={{ gridAutoRows: "max-content" }}>
             <button className={pending?.src === logoUrl ? "is-selected" : ""} onClick={() => setPending({ src: logoUrl, alt: "Logo" })}>
               <img src={logoUrl} alt="Current logo" />
               <span>Current logo</span>
@@ -646,7 +654,7 @@ function ImageSeamPanel({
           </div>
         )}
         {tab === "products" && (
-          <div className="v9-asset-list">
+          <div className="v9-asset-list" style={{ gridAutoRows: "max-content" }}>
             {catalogProducts.length === 0 && <p className="v9-hint">No products found.</p>}
             {catalogProducts
               .filter((product) => product.imageSrc)
@@ -695,7 +703,7 @@ function ImageSeamPanel({
               />
             </label>
             {uploadFetcher.data?.ok && uploadFetcher.data.asset && (
-              <div className="v9-asset-list">
+              <div className="v9-asset-list" style={{ gridAutoRows: "max-content" }}>
                 <button
                   className={pending?.src === uploadFetcher.data.asset.url ? "is-selected" : ""}
                   onClick={() =>

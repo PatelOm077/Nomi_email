@@ -190,7 +190,10 @@
 .v9-source-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .v9-source-grid button { min-height: 40px; border: 1px solid var(--line); border-radius: 4px; background: var(--white); color: var(--muted); font-size: 10px; font-weight: 700; }
 .v9-source-grid button.is-active { border-color: var(--cyan); background: var(--cyan-soft); color: var(--cyan-deep); }
-.v9-asset-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 220px; overflow-y: auto; }
+/* grid-auto-rows: max-content — the tiles clip (overflow: hidden), which drops
+   their automatic minimum height to 0, so auto rows would otherwise shrink to
+   share the 220px max-height instead of scrolling (squashed strips). */
+.v9-asset-list { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: max-content; gap: 8px; max-height: 320px; overflow-y: auto; }
 .v9-asset-list button { display: flex; flex-direction: column; text-align: left; border: 2px solid transparent; border-radius: 4px; overflow: hidden; background: var(--white); padding: 0; }
 .v9-asset-list button.is-selected { border-color: var(--cyan); }
 .v9-asset-list img { width: 100%; height: 56px; object-fit: contain; background: #e8edea; display: block; }

@@ -22,15 +22,23 @@ function assertError<T extends { ok: boolean }>(
   if (data.ok) throw new Error(`Expected an error response, got ${JSON.stringify(data)}`);
 }
 
-const streamMessage = vi.hoisted(() => vi.fn());
+// The route builds the email with the campaign engine (its own tests cover
+// planning, photos, and writing); here it is stubbed to return fixed HTML.
+const engine = vi.hoisted(() => vi.fn());
 const mocks = vi.hoisted(() => ({
   authenticateAdmin: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
 }));
 
-vi.mock("./anthropic-client", () => ({
-  getAnthropicClient: () => ({ messages: { stream: streamMessage } }),
+// Plan limits are covered by usage.server.test.ts; always allowed here.
+vi.mock("../billing/usage.server", () => ({
+  checkAllowance: async () => ({ allowed: true, message: null }),
+  recordUsage: async () => {},
+}));
+vi.mock("../brand-studio/campaign-engine.server", () => ({
+  generateLifecycleEmailsWithCampaignEngine: engine,
+  lifecycleLanguageAndTone: () => ({ language: "en", tone: "warm-plain" }),
 }));
 vi.mock("../shopify.server", () => ({
   authenticate: { admin: mocks.authenticateAdmin },
@@ -41,8 +49,17 @@ vi.mock("../db.server", () => ({
       findUnique: mocks.findUnique,
       update: mocks.update,
     },
+    shopSettings: { findUnique: async () => ({ language: "en", tone: "warm-plain" }) },
   },
 }));
+
+function engineReturns(html: string) {
+  engine.mockImplementationOnce(async (input: { existingRendered: Record<string, string>; onlyId: string }) => ({
+    value: { ...input.existingRendered, [input.onlyId]: html },
+    usage: { provider: "anthropic", inputTokens: 10, outputTokens: 5 },
+    costMicros: 1_000,
+  }));
+}
 
 // auditEmailFamily's structure-repeat check requires at least 10 distinct
 // rendered "shapes" across all 13 emails, so each fixture needs a distinct
@@ -55,11 +72,6 @@ const safeHtml = (id: string, paragraphCount = 1) => {
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body style="background:#fffaf3;color:#1d1a18"><table role="presentation" style="max-width:600px;color:#b96f52;border-color:#d8cfc3"><tr><td><h1>${id}</h1>${paragraphs}</td></tr></table></body></html>`;
 };
 
-const modelResponse = (parsed_output: unknown, inputTokens = 10) => ({
-  stop_reason: "end_turn",
-  parsed_output,
-  usage: { input_tokens: inputTokens, output_tokens: 5 },
-});
 
 const renderedEmails = Object.fromEntries(
   BRAND_STUDIO_LIFECYCLE_IDS.map((id, index) => [id, safeHtml(id, index + 1)]),
@@ -120,9 +132,24 @@ async function regenerateAndSettle(recipeId: string) {
   return action({ request: regenerateRequest(recipeId) } as never);
 }
 
+// A finished regenerate is only a draft until the merchant presses Save.
+function saveDraft(recipeId: string) {
+  const formData = new FormData();
+  formData.set("recipeId", recipeId);
+  formData.set("intent", "save");
+  return action({
+    request: new Request("https://nomi.example.com/app/brand-studio/regenerate", { method: "POST", body: formData }),
+  } as never);
+}
+
+function persistedRenderedEmails(): Record<string, string> | null {
+  const call = mocks.update.mock.calls.find(([args]) => args.data.renderedEmails);
+  return call ? JSON.parse(call[0].data.renderedEmails) : null;
+}
+
 describe("app.brand-studio.regenerate action", () => {
   beforeEach(() => {
-    streamMessage.mockReset();
+    engine.mockReset();
     mocks.authenticateAdmin.mockReset();
     mocks.findUnique.mockReset();
     mocks.update.mockReset();
@@ -140,7 +167,7 @@ describe("app.brand-studio.regenerate action", () => {
     expect(response.init?.status).toBe(400);
     expect(response.data.ok).toBe(false);
     expect(mocks.findUnique).not.toHaveBeenCalled();
-    expect(streamMessage).not.toHaveBeenCalled();
+    expect(engine).not.toHaveBeenCalled();
   });
 
   it("rejects when the stored family isn't approved", async () => {
@@ -150,13 +177,13 @@ describe("app.brand-studio.regenerate action", () => {
     });
 
     const response = await action({
-      request: regenerateRequest("cart-3"),
+      request: regenerateRequest("winback-3"),
     } as never);
 
     expect(response.init?.status).toBe(400);
     assertError(response.data);
     expect(response.data.error).toMatch(/build the full email family/i);
-    expect(streamMessage).not.toHaveBeenCalled();
+    expect(engine).not.toHaveBeenCalled();
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
@@ -173,76 +200,125 @@ describe("app.brand-studio.regenerate action", () => {
         "winback-1": staleWinback1,
       }),
     });
-    streamMessage.mockReturnValueOnce({
-      finalMessage: async () =>
-        modelResponse({
-          emails: [{ id: "cart-3", html: safeHtml("cart-3-rebuilt", 8) }],
-        }),
-    });
+    engineReturns(safeHtml("winback-3-rebuilt", 8));
 
-    const response = await regenerateAndSettle("cart-3");
+    const response = await regenerateAndSettle("winback-3");
 
     assertOk(response.data);
     if (response.data.status !== "done")
       throw new Error(`Expected a done response, got ${JSON.stringify(response.data)}`);
-    expect(response.data.html).toContain("cart-3-rebuilt");
-    expect(streamMessage).toHaveBeenCalledTimes(1);
+    expect(response.data.html).toContain("winback-3-rebuilt");
+    expect(engine).toHaveBeenCalledTimes(1);
+    expect(engine.mock.calls[0][0]).toMatchObject({ onlyId: "winback-3" });
 
-    const persisted = JSON.parse(
-      mocks.update.mock.calls[0][0].data.renderedEmails,
-    );
-    expect(persisted["cart-3"]).toContain("cart-3-rebuilt");
+    expect(persistedRenderedEmails()).toBeNull();
+    await saveDraft("winback-3");
+    const persisted = persistedRenderedEmails()!;
+    expect(persisted["winback-3"]).toContain("winback-3-rebuilt");
     expect(persisted["winback-1"]).toBe(staleWinback1);
+  });
+
+  it("builds the email from the merchant's brief, picked product, and discount, and saves it to the flow", async () => {
+    const product = {
+      id: "gid://shopify/Product/901",
+      title: "Moss Serum",
+      onlineStoreUrl: "https://lumen.example.com/products/moss-serum",
+      featuredMedia: { preview: { image: { url: "https://cdn.shopify.com/moss.png", altText: null } } },
+      priceRangeV2: { minVariantPrice: { amount: "58.00", currencyCode: "USD" } },
+      productType: "Serum",
+      description: "A light daily serum.",
+    };
+    const graphql = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: [product] } }),
+    });
+    mocks.authenticateAdmin.mockResolvedValue({
+      session: { shop: "lumen.myshopify.com" },
+      admin: { graphql },
+    });
+    mocks.findUnique.mockResolvedValue(approvedProfileRow());
+    const html = safeHtml(
+      "winback-3-moss",
+      8,
+    ).replace(
+      "</h1>",
+      `</h1><a href="${product.onlineStoreUrl}"><img src="${product.featuredMedia.preview.image.url}" alt="Moss Serum" width="600"></a><p>Code WELCOME10</p>`,
+    );
+    engineReturns(html);
+
+    const formData = new FormData();
+    formData.set("recipeId", "winback-3");
+    formData.set("prompt", "Lead with our new serum");
+    formData.set("feature", "product");
+    formData.set("productIds", product.id);
+    formData.set("discountMethod", "code");
+    formData.set("discountCode", "WELCOME10");
+    formData.set("discountType", "percentage");
+    formData.set("discountValue", "10");
+    formData.set("startAt", "2026-10-01T09:00:00.000Z");
+    formData.set("endAt", "2026-10-15T23:59:00.000Z");
+    const started = await action({
+      request: new Request("https://nomi.example.com/app/brand-studio/regenerate", { method: "POST", body: formData }),
+    } as never);
+    expect(started.data).toMatchObject({ ok: true, status: "pending" });
+    await __waitForRegenerateJobsForTests();
+    const response = await action({ request: regenerateRequest("winback-3") } as never);
+
+    assertOk(response.data);
+    expect(response.data).toMatchObject({ status: "done" });
+    expect(graphql).toHaveBeenCalledWith(expect.any(String), { variables: { ids: [product.id] } });
+    const call = engine.mock.calls[0][0];
+    expect(call.recipes.find(({ id }: { id: string }) => id === "winback-3").productIds).toEqual([product.id]);
+    expect(call.evidence.products[0]).toMatchObject({
+      id: product.id,
+      imageUrl: product.featuredMedia.preview.image.url,
+      productUrl: product.onlineStoreUrl,
+    });
+    expect(call.merchantDirection).toContain("Lead with our new serum");
+    expect(call.merchantDirection).toContain('"Moss Serum"');
+    expect(call.merchantDirection).toContain('code "WELCOME10" for 10% off. Valid 2026-10-01 through 2026-10-15.');
+    const saved = await saveDraft("winback-3");
+    expect(saved.data).toMatchObject({ ok: true, status: "saved" });
+    expect(persistedRenderedEmails()!["winback-3"]).toContain("WELCOME10");
   });
 
   it("regenerates only the requested email and persists a single merged key", async () => {
     mocks.findUnique.mockResolvedValue(approvedProfileRow());
-    streamMessage
-      .mockReturnValueOnce({
-        finalMessage: async () =>
-          modelResponse({
-            emails: [{ id: "cart-3", html: safeHtml("cart-3-rebuilt", 8) }],
-          }),
-      });
+    engineReturns(safeHtml("winback-3-rebuilt", 8));
 
-    const response = await regenerateAndSettle("cart-3");
+    const response = await regenerateAndSettle("winback-3");
 
     assertOk(response.data);
-    expect(response.data.recipeId).toBe("cart-3");
+    expect(response.data.recipeId).toBe("winback-3");
     if (response.data.status !== "done")
       throw new Error(`Expected a done response, got ${JSON.stringify(response.data)}`);
-    expect(response.data.html).toContain("cart-3-rebuilt");
+    expect(response.data.html).toContain("winback-3-rebuilt");
 
-    // No critique call — exactly one Sonnet call for the one pending flow.
-    expect(streamMessage).toHaveBeenCalledTimes(1);
+    expect(engine).toHaveBeenCalledTimes(1);
 
+    // Generating only records its cost; the email waits for Save.
     expect(mocks.update).toHaveBeenCalledOnce();
-    const persisted = JSON.parse(
-      mocks.update.mock.calls[0][0].data.renderedEmails,
-    );
+    expect(persistedRenderedEmails()).toBeNull();
+
+    const saved = await saveDraft("winback-3");
+    expect(saved.data).toMatchObject({ ok: true, status: "saved" });
+    const persisted = persistedRenderedEmails()!;
     expect(Object.keys(persisted)).toHaveLength(13);
-    expect(persisted["cart-3"]).toContain("cart-3-rebuilt");
+    expect(persisted["winback-3"]).toContain("winback-3-rebuilt");
     for (const id of BRAND_STUDIO_LIFECYCLE_IDS) {
-      if (id !== "cart-3") expect(persisted[id]).toBe(renderedEmails[id]);
+      if (id !== "winback-3") expect(persisted[id]).toBe(renderedEmails[id]);
     }
+
+    // The draft is used up by the save.
+    const again = await saveDraft("winback-3");
+    expect(again.data).toMatchObject({ ok: false, status: "error" });
   });
 
   it("surfaces a quality-gate failure without persisting renderedEmails", async () => {
     mocks.findUnique.mockResolvedValue(approvedProfileRow());
-    // Missing doctype/viewport/etc — auditCompiledEmail reports an error,
-    // and the repair pass below also fails to fix it.
-    const brokenHtml = "<p>too short</p>";
-    streamMessage
-      .mockReturnValueOnce({
-        finalMessage: async () =>
-          modelResponse({ emails: [{ id: "cart-3", html: brokenHtml }] }),
-      })
-      .mockReturnValueOnce({
-        finalMessage: async () =>
-          modelResponse({ emails: [{ id: "cart-3", html: brokenHtml }] }),
-      });
+    // Missing doctype/viewport/etc — auditCompiledEmail reports an error.
+    engineReturns("<p>too short</p>");
 
-    const response = await regenerateAndSettle("cart-3");
+    const response = await regenerateAndSettle("winback-3");
 
     expect(response.init?.status).toBe(400);
     expect(response.data.ok).toBe(false);

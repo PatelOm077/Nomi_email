@@ -6,7 +6,11 @@ const createMessage = vi.hoisted(() => vi.fn());
 
 vi.mock("./anthropic-client", () => ({
   getAnthropicClient: () => ({
-    messages: { create: createMessage },
+    // generateEmailHtml streams and awaits finalMessage(); the mock resolves
+    // that final message straight from createMessage.
+    messages: {
+      stream: (params: unknown) => ({ finalMessage: () => createMessage(params) }),
+    },
   }),
 }));
 

@@ -1,3 +1,4 @@
+import { hardenMobileBoxSizing } from "../email-engine/mobile-box-sizing";
 import {
   BRAND_STUDIO_LIFECYCLE_IDS,
   brandEvidenceSchema,
@@ -95,7 +96,11 @@ export function getApprovedBrandStudioFamily(
     brandSystem,
     direction,
     recipes,
-    renderedEmails,
+    // Emails stored before the phone-width fix get it on every read, so
+    // previews, the editor, and sends never overflow on small screens.
+    renderedEmails: Object.fromEntries(
+      Object.entries(renderedEmails).map(([id, html]) => [id, hardenMobileBoxSizing(html)]),
+    ) as typeof renderedEmails,
     evidenceFingerprint: profile.evidenceFingerprint,
   };
 }

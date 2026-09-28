@@ -5,7 +5,10 @@ import type { NewsletterCampaign } from "./types";
 
 const generateEmailHtml = vi.hoisted(() => vi.fn());
 
-vi.mock("./generate-email", () => ({ generateEmailHtml }));
+vi.mock("./generate-email", async (importOriginal) => ({
+  EmailCutOffError: (await importOriginal<typeof import("./generate-email")>()).EmailCutOffError,
+  generateEmailHtml,
+}));
 
 const baseCampaign: NewsletterCampaign = {
   shopName: "Paper Boat Goods",
@@ -35,6 +38,18 @@ const baseCampaign: NewsletterCampaign = {
 describe("generateNewsletterEmail", () => {
   beforeEach(() => {
     generateEmailHtml.mockReset();
+  });
+
+  it("retries once, more compactly, when the email runs out of room", async () => {
+    const { EmailCutOffError } = await import("./generate-email");
+    generateEmailHtml
+      .mockRejectedValueOnce(new EmailCutOffError())
+      .mockResolvedValueOnce("<!DOCTYPE html><html>ok</html>");
+
+    await expect(generateNewsletterEmail(baseCampaign)).resolves.toBe("<!DOCTYPE html><html>ok</html>");
+    expect(generateEmailHtml).toHaveBeenCalledTimes(2);
+    expect(generateEmailHtml.mock.calls[1][1]).toContain("ran out of room");
+    expect(generateEmailHtml.mock.calls[0][4]).toEqual({ maxTokens: 24_000, effort: "medium" });
   });
 
   it("maps the campaign brief and products into the shared generator call", async () => {

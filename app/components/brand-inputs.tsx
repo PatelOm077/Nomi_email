@@ -311,6 +311,80 @@ function ColorPopover({
  * invalid value blocks native form submission via setCustomValidity instead
  * of being silently replaced server-side.
  */
+/**
+ * A required typeface name (Brand Studio's display/body character, and the
+ * same fields in Brand & Settings). Blank blocks the form with an inline
+ * message instead of silently keeping the old font.
+ */
+export function FontField({
+  name,
+  label,
+  defaultValue,
+  example,
+  variant = "studio",
+}: {
+  name: string;
+  label: string;
+  defaultValue: string;
+  example: string;
+  variant?: "studio" | "settings";
+}) {
+  const id = useId();
+  const [value, setValue] = useState(defaultValue);
+  const [touched, setTouched] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const error = value.trim() ? null : `Add a ${label.toLowerCase()}, like ${example}.`;
+  const showError = Boolean(error) && touched;
+
+  useEffect(() => {
+    inputRef.current?.setCustomValidity(error ?? "");
+  }, [error]);
+
+  const studio = variant === "studio";
+  const labelStyle: CSSProperties = studio
+    ? { display: "grid", gap: 7, color: "#5f5a57", font: `700 9px/1.2 ${UI_FONT}`, letterSpacing: ".07em", textTransform: "uppercase" }
+    : { display: "grid", gap: 7, color: "var(--nomi-neutral-700, #5f5a57)", fontSize: 11, fontWeight: 600 };
+
+  return (
+    <div style={{ display: "grid", gap: 6, minWidth: 0, alignContent: "start" }}>
+      <label htmlFor={id} style={labelStyle}>{label}</label>
+      <input
+        ref={inputRef}
+        id={id}
+        name={name}
+        value={value}
+        maxLength={100}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder={example}
+        aria-invalid={showError}
+        aria-describedby={showError ? `${id}-error` : undefined}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={() => setTouched(true)}
+        onInvalid={() => setTouched(true)}
+        style={{
+          width: "100%",
+          minHeight: 44,
+          boxSizing: "border-box",
+          padding: studio ? "0 12px" : "9px 11px",
+          border: `1px solid ${showError ? ERROR : studio ? LINE : "var(--nomi-neutral-300, #d8d4d0)"}`,
+          borderRadius: studio ? 0 : 3,
+          background: showError ? "#fff7f6" : "#fff",
+          color: INK,
+          font: `500 13px/1 ${UI_FONT}`,
+          textTransform: "none",
+          boxShadow: showError ? "0 0 0 3px rgba(180,35,24,.1)" : undefined,
+        }}
+      />
+      {showError ? (
+        <p id={`${id}-error`} role="alert" style={{ margin: 0, color: ERROR, font: `500 11px/1.35 ${UI_FONT}`, textTransform: "none", letterSpacing: 0 }}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function ColorField({
   name,
   label,

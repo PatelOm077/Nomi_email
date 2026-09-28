@@ -1,11 +1,12 @@
 import { getEmailDeliveryConfig } from "./config.server";
 
-type SendEmailInput = {
+export type SendEmailInput = {
   to: string;
   subject: string;
   html: string;
   idempotencyKey: string;
   headers?: Record<string, string>;
+  from?: string;
 };
 
 type ResendResponse = { id?: string; message?: string; name?: string };
@@ -16,17 +17,19 @@ export async function sendEmail({
   html,
   idempotencyKey,
   headers,
+  from,
 }: SendEmailInput): Promise<string> {
   const config = getEmailDeliveryConfig();
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: AbortSignal.timeout(30_000),
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
       "Idempotency-Key": idempotencyKey,
     },
     body: JSON.stringify({
-      from: `${config.fromName} <${config.fromEmail}>`,
+      from: from ?? `${config.fromName} <${config.fromEmail}>`,
       to: [to],
       subject,
       html,

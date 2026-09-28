@@ -36,8 +36,19 @@ export async function createPrismaTestDatabase(
       "senderPostalCode" TEXT,
       "senderAddress" TEXT,
       "excludedProductIds" TEXT NOT NULL DEFAULT '[]',
+      "plan" TEXT NOT NULL DEFAULT 'free',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL
+    )
+  `);
+  await client.$executeRawUnsafe(`
+    CREATE TABLE "UsageCounter" (
+      "shop" TEXT NOT NULL,
+      "period" TEXT NOT NULL,
+      "metric" TEXT NOT NULL,
+      "count" INTEGER NOT NULL DEFAULT 0,
+      "updatedAt" DATETIME NOT NULL,
+      PRIMARY KEY ("shop", "period", "metric")
     )
   `);
   await client.$executeRawUnsafe(`
@@ -52,9 +63,18 @@ export async function createPrismaTestDatabase(
       "availableAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "lastError" TEXT,
       "providerMessageId" TEXT,
+      "preparedEmail" TEXT,
+      "deliveryStartedAt" DATETIME,
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL,
-      "sentAt" DATETIME
+      "sentAt" DATETIME,
+      "recipient" TEXT,
+      "openedAt" DATETIME,
+      "clickedAt" DATETIME,
+      "convertedAt" DATETIME,
+      "conversionOrderId" TEXT,
+      "conversionValue" REAL,
+      "conversionCurrency" TEXT
     )
   `);
   await client.$executeRawUnsafe(
@@ -82,6 +102,8 @@ export async function createPrismaTestDatabase(
       "generatedEvidenceFingerprint" TEXT NOT NULL DEFAULT '',
       "evidenceRefreshedAt" DATETIME,
       "currentBuildCostMicros" INTEGER NOT NULL DEFAULT 0,
+      "photoKit" TEXT NOT NULL DEFAULT '[]',
+      "emailPlans" TEXT NOT NULL DEFAULT '{}',
       "openAiInputTokens" INTEGER NOT NULL DEFAULT 0,
       "openAiOutputTokens" INTEGER NOT NULL DEFAULT 0,
       "anthropicInputTokens" INTEGER NOT NULL DEFAULT 0,

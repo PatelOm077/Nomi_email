@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Link, useFetcher, useLoaderData } from "react-router";
+import { Link, redirect, useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { LIFECYCLE_TEMPLATE_COPY } from "../email-engine/templates/lifecycle-template-copy";
@@ -18,6 +18,7 @@ import {
   type LifecycleRecipe,
 } from "../brand-studio/types";
 import { getApprovedBrandStudioFamily } from "../brand-studio/approved-family";
+import { templatesEnabled } from "../dashboard/reference-looks.server";
 
 const LOOKS = [
   {
@@ -102,6 +103,8 @@ function getLookId(primaryColor: string | null): LookId {
 }
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
+  // Hidden from the deployed app; see reference-looks.server.ts.
+  if (!templatesEnabled()) throw redirect("/app");
   const url = new URL(request.url);
   const requestedLook = url.searchParams.get("look");
   const showGeneratedBrand = url.searchParams.get("brand") === "selected";
@@ -168,6 +171,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
+  if (!templatesEnabled()) throw redirect("/app");
   const payload = (await request.formData()).get("payload");
   if (typeof payload !== "string") return { error: "Missing request data." };
   let parsed: TemplatesActionRequest;

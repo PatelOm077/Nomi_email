@@ -11,11 +11,15 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { NomiRouteErrorBoundary } from "../dashboard/route-error-fallback";
 import { loadAppEmbedStatus } from "../dashboard/app-embed.server";
+import { templatesEnabled } from "../dashboard/reference-looks.server";
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
 import nomiStyles from "../styles/nomi.css?url";
+import supportStyles from "../styles/support.css?url";
+import { SupportWidget } from "../support/SupportWidget";
 
 export const links: LinksFunction = () => [
+  { rel: "stylesheet", href: supportStyles },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
   {
@@ -59,8 +63,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     throw redirect(`${SETUP_PATH}${url.search}`);
   }
 
-  // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "", embedVerified };
+  return {
+    // eslint-disable-next-line no-undef
+    apiKey: process.env.SHOPIFY_API_KEY || "",
+    embedVerified,
+    showTemplates: templatesEnabled(),
+  };
 };
 
 // The embedded shell's data is static once the embed is verified, so child
@@ -70,7 +78,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({ currentUrl, nextUrl
   currentUrl.pathname === SETUP_PATH || nextUrl.pathname === SETUP_PATH;
 
 export default function App() {
-  const { apiKey, embedVerified } = useLoaderData<typeof loader>();
+  const { apiKey, embedVerified, showTemplates } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isNavigating = navigation.state !== "idle";
   const actionIntent = navigation.formData?.get("intent");
@@ -98,7 +106,7 @@ export default function App() {
           <s-link href="/app/contacts">Contacts</s-link>
           <s-link href="/app/campaigns">Campaigns</s-link>
           <s-link href="/app/brand-settings">Brand &amp; Settings</s-link>
-          <s-link href="/app/additional">Templates</s-link>
+          {showTemplates ? <s-link href="/app/additional">Templates</s-link> : null}
         </s-app-nav>
       ) : (
         // Setup is the only screen until the embed is on, so the sidebar
@@ -106,6 +114,7 @@ export default function App() {
         <s-app-nav />
       )}
       <Outlet />
+      <SupportWidget />
     </AppProvider>
   );
 }

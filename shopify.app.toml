@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "90627cfe3d6101d033138a44c81ffaa8"
-application_url = "https://example.com"
+application_url = "https://nomi-email.fly.dev"
 embedded = true
 name = "Nomi"
 
@@ -48,8 +48,12 @@ api_version = "2026-10"
   uri = "/webhooks/email-events"
   topics = [ "orders/create", "fulfillments/update", "checkouts/update" ]
 
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/compliance"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://nomi-email.fly.dev/auth/callback" ]
 
 [build]
 include_config_on_deploy = true

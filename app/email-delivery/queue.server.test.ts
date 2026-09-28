@@ -101,7 +101,7 @@ describe("enqueueEmailJob", () => {
     expect(db.emailJob.updateMany).toHaveBeenCalledWith({
       where: {
         webhookId: "checkout:paper-boat.myshopify.com:checkout-token",
-        status: "pending",
+        status: { in: ["pending", "processing"] },
       },
       data: { status: "skipped", lastError: "Checkout completed." },
     });

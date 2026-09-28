@@ -1,3 +1,4 @@
+import { needsPersonalSlots } from "../email-engine/personal-slots";
 import type { BrandEvidence, BrandSystem, LifecycleRecipe } from "./types";
 
 export type EmailQualityIssue = {
@@ -290,8 +291,15 @@ export function auditCompiledEmail(input: {
         ),
       );
 
-    if (recipe.productIds.length > 0) {
-      const selectedProducts = [...new Set(recipe.productIds)]
+    // Cart and review emails show a single preview item row (the sender
+    // swaps in the customer's own items), so only its product is required.
+    const requiredProductIds = needsPersonalSlots(recipe.id)
+      ? recipe.productIds
+          .filter((id) => isPublicUrl(products.find((product) => product.id === id)?.imageUrl))
+          .slice(0, 1)
+      : recipe.productIds;
+    if (requiredProductIds.length > 0) {
+      const selectedProducts = [...new Set(requiredProductIds)]
         .map((id) => products.find((product) => product.id === id))
         .filter((product): product is BrandEvidence["products"][number] =>
           Boolean(product),
@@ -313,7 +321,7 @@ export function auditCompiledEmail(input: {
         (url) => !canonicalImageSources.has(url),
       );
       if (
-        selectedProducts.length !== new Set(recipe.productIds).size ||
+        selectedProducts.length !== new Set(requiredProductIds).size ||
         selectedProductImageUrls.some((url) => !url) ||
         missingProductImages.length > 0
       )

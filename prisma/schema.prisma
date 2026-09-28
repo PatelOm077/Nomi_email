@@ -16,6 +16,44 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model SupportConversation {
+  id        String @id @default(cuid())
+  shop      String @unique
+  email     String?
+  status    String @default("automated")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages  SupportMessage[]
+  notifications SupportNotification[]
+}
+
+model SupportNotification {
+  id             String @id @default(cuid())
+  conversationId String
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  requestId      String @unique
+  // Null alerts the Nomi team; an address tells the merchant the team replied.
+  recipient      String?
+  body           String
+  status         String @default("pending")
+  attempts       Int @default(0)
+  availableAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  @@index([status, availableAt])
+}
+
+model SupportMessage {
+  id             String @id @default(cuid())
+  conversationId String
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  requestId      String @unique
+  role           String
+  body           String
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
 model Session {
   id                  String    @id
   shop                String
@@ -70,8 +108,25 @@ model ShopSettings {
   // JSON array of Shopify Product GIDs. Kept on the per-shop settings row
   // because this is a small preference list, not a product mirror.
   excludedProductIds    String    @default("[]")
+  // The Nomi plan this shop is on (app/billing/plans.ts). Limits are
+  // enforced from it; charging happens through Shopify App Pricing once the
+  // app is listed publicly.
+  plan                  String    @default("free")
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+}
+
+// How much of each plan allowance a shop has used (app/billing/usage.server.ts).
+// period is a calendar month ("2026-09") for monthly allowances, or
+// "lifetime" for the Free plan's one-time ones.
+model UsageCounter {
+  shop      String
+  period    String
+  metric    String
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([shop, period, metric])
 }
 
 // One durable record per shop for the Brand Studio onboarding and generation
@@ -101,6 +156,13 @@ model BrandStudioProfile {
   generatedEvidenceFingerprint String @default("")
   evidenceRefreshedAt   DateTime?
   currentBuildCostMicros Int      @default(0)
+  // JSON array of AI brand photos generated once per build and reused by
+  // every email and regenerate (see brand-studio/photo-kit.server.ts).
+  photoKit              String    @default("[]")
+  // JSON map of email id → { concept, sections } from the family creative
+  // director (email-engine/lifecycle-photo-kit-plan.ts); the writer builds
+  // each email from its plan.
+  emailPlans            String    @default("{}")
   openAiInputTokens     Int       @default(0)
   openAiOutputTokens    Int       @default(0)
   anthropicInputTokens  Int       @default(0)
@@ -212,11 +274,27 @@ model EmailJob {
   availableAt       DateTime  @default(now())
   lastError         String?
   providerMessageId String?
+  // Freeze the exact provider request before sending, including sender/footer.
+  preparedEmail     String?
+  deliveryStartedAt DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   sentAt            DateTime?
+  // Dashboard flow stats. `recipient` (lowercased) is set at send time so an
+  // orders/create webhook can attribute the order back to this email.
+  // openedAt/clickedAt come from Resend's email.opened / email.clicked
+  // webhooks (first event only).
+  recipient         String?
+  openedAt          DateTime?
+  clickedAt         DateTime?
+  convertedAt       DateTime?
+  conversionOrderId String?
+  conversionValue   Float?
+  conversionCurrency String?
 
   @@index([status, availableAt])
+  @@index([shop, sentAt])
+  @@index([shop, recipient, sentAt])
 }
 
 // One merchant-owned sending domain per shop, registered in Nomi's Resend

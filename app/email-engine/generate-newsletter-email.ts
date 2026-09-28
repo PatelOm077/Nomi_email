@@ -1,4 +1,4 @@
-import { generateEmailHtml } from "./generate-email";
+import { EmailCutOffError, generateEmailHtml } from "./generate-email";
 import { NEWSLETTER_SKELETON_PROMPT } from "./newsletter-prompt";
 import type { NewsletterCampaign } from "./types";
 
@@ -75,13 +75,37 @@ ${brandDirection(campaign)}
 Ground every word in what this store actually sells: describe each product only as what its product type, description, and name say it is, never as a different category of thing. Return only the finished HTML document.`;
 }
 
+// Medium effort: the composition is already planned upstream by the creative
+// director, and medium brings a campaign to ~1.5 min (high took ~3.5).
+// 24k covers an art-directed email written compactly.
+const NEWSLETTER_OPTIONS = { maxTokens: 24_000, effort: "medium" } as const;
+
+const COMPACT_RETRY_NOTE =
+  "\n\nA previous attempt at this email ran out of room before the document finished. Build the same plan again, more economically: tighter copy, simpler constructed graphics, and the most compact table markup that still looks designed. Finishing the document matters more than any single flourish.";
+
 export async function generateNewsletterEmail(
   campaign: NewsletterCampaign,
 ): Promise<string> {
-  return generateEmailHtml(
-    NEWSLETTER_SKELETON_PROMPT,
-    buildNewsletterMessage(campaign),
-    campaign.language,
-    campaign.tone,
-  );
+  const message = buildNewsletterMessage(campaign);
+  try {
+    return await generateEmailHtml(
+      NEWSLETTER_SKELETON_PROMPT,
+      message,
+      campaign.language,
+      campaign.tone,
+      NEWSLETTER_OPTIONS,
+    );
+  } catch (error) {
+    if (!(error instanceof EmailCutOffError)) throw error;
+    // One compact retry keeps the same plan and photos rather than failing
+    // the whole campaign over length.
+    console.warn("Campaign email ran out of room; retrying compactly.");
+    return generateEmailHtml(
+      NEWSLETTER_SKELETON_PROMPT,
+      message + COMPACT_RETRY_NOTE,
+      campaign.language,
+      campaign.tone,
+      NEWSLETTER_OPTIONS,
+    );
+  }
 }

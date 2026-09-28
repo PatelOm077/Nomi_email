@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import db from "../db.server";
+import { attributeOrderConversion } from "./email-stats.server";
 
 type EnqueueInput = {
   webhookId: string;
@@ -28,11 +29,12 @@ export async function enqueueEmailJob({
       await db.emailJob.updateMany({
         where: {
           webhookId: `checkout:${shop}:${payload.checkout_token}`,
-          status: "pending",
+          status: { in: ["pending", "processing"] },
         },
         data: { status: "skipped", lastError: "Checkout completed." },
       });
     }
+    await attributeOrderConversion(shop, payload);
     return "ignored";
   }
 
@@ -54,7 +56,7 @@ export async function enqueueEmailJob({
       where: { webhookId: checkoutJobId },
       select: { status: true },
     });
-    if (existing?.status === "sent") return "duplicate";
+    if (existing && ["sent", "processing"].includes(existing.status)) return "duplicate";
 
     await db.emailJob.upsert({
       where: { webhookId: checkoutJobId },

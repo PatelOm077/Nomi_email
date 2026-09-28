@@ -20,6 +20,11 @@ const mocks = vi.hoisted(() => ({
   footer: vi.fn((): { complete: boolean; line: string | null } => ({ complete: true, line: "Paper Boat · 1 Harbour St, Leith, UK" })),
 }));
 
+// Plan limits are covered by usage.server.test.ts; always allowed here.
+vi.mock("../billing/usage.server", () => ({
+  checkAllowance: async () => ({ allowed: true, message: null }),
+  recordUsage: async () => {},
+}));
 vi.mock("../db.server", () => ({ default: mocks.db }));
 vi.mock("../shopify.server", () => ({
   unauthenticated: { admin: mocks.admin },
@@ -31,6 +36,7 @@ vi.mock("../email-engine/generate-abandoned-cart-email", () => ({
   generateAbandonedCartEmail: mocks.generateAbandonedCartEmail,
 }));
 vi.mock("./provider.server", () => ({ sendEmail: mocks.sendEmail }));
+vi.mock("./config.server", () => ({ getEmailDeliveryConfig: () => ({ fromEmail: "mail@example.com", fromName: "Paper Boat" }) }));
 vi.mock("./unsubscribe.server", () => ({
   isSuppressed: mocks.isSuppressed,
   unsubscribeUrl: ({ email }: { email: string }) => `https://app.test/unsubscribe?t=${email}`,
@@ -330,6 +336,7 @@ describe("processPendingEmailJobs", () => {
           }),
         }),
       }),
+      { effort: "low" },
     );
   });
 
@@ -391,6 +398,7 @@ describe("processPendingEmailJobs", () => {
         language: "es",
         reviewUrl: "https://shop.example.com/products/linen-throw",
       }),
+      { effort: "low" },
     );
     expect(mocks.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -467,13 +475,101 @@ describe("processPendingEmailJobs", () => {
           imageUrl: null,
         },
       ],
-    });
+    }, { effort: "low" });
     expect(mocks.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "mina@example.com",
         idempotencyKey: "cart:paper-boat.myshopify.com:checkout-token",
       }),
     );
+  });
+
+  describe("pre-generated Brand Studio emails", () => {
+    const slottedEmail = (id: string) =>
+      `<!doctype html><html><body><h1>${id}</h1>` +
+      `<table data-nomi-slot="items"><tr data-nomi-item data-nomi-product-id="p1"><td>` +
+      `<a data-nomi-field="item-url" href="https://paper-boat.example.com/products/vase"><img data-nomi-field="image" src="https://cdn.example.com/vase.jpg" alt="Vase" width="120" height="120"></a>` +
+      `<p data-nomi-field="title">Stoneware Vase</p><p data-nomi-field="quantity"></p><p data-nomi-field="price">$40.00</p>` +
+      `</td></tr></table>` +
+      `<a data-nomi-field="action-url" href="https://paper-boat.example.com">Continue</a></body></html>`;
+    const slottedProfile = () => ({
+      status: "complete",
+      evidence: JSON.stringify(approvedEvidence),
+      brandSystem: JSON.stringify(approvedSystem),
+      lifecycleRecipes: JSON.stringify(approvedRecipes),
+      renderedEmails: JSON.stringify({
+        ...approvedRenderedEmails,
+        "cart-1": slottedEmail("cart-1"),
+        "review-request": slottedEmail("review-request"),
+      }),
+      evidenceFingerprint: "evidence-v2",
+      snapshotEvidenceFingerprint: "evidence-v2",
+      generatedEvidenceFingerprint: "evidence-v2",
+      directions: JSON.stringify(approvedDirections),
+      selectedDirectionId: approvedSystem.directionId,
+    });
+    const cartJob = (locale: string) => ({
+      ...baseJob,
+      topic: "CHECKOUTS_UPDATE",
+      payload: JSON.stringify({
+        token: "checkout-token",
+        email: "mina@example.com",
+        customer_locale: locale,
+        buyer_accepts_marketing: true,
+      }),
+    });
+    const multiItemCheckout = structuredClone(checkoutResponse);
+    multiItemCheckout.data.abandonedCheckouts.edges[0].node.lineItems.edges = [
+      { node: { title: "Linen Throw", quantity: 2, image: { url: "https://cdn.example.com/linen.jpg" } as never, originalTotalPriceSet: { shopMoney: { amount: "6400", currencyCode: "INR" } } } },
+      { node: { title: "Oak Tray", quantity: 1, image: null, originalTotalPriceSet: { shopMoney: { amount: "1100", currencyCode: "INR" } } } },
+    ] as never;
+
+    it("sends the approved cart email with the customer's items and checkout link, without calling Claude", async () => {
+      mocks.db.emailJob.findMany.mockResolvedValue([cartJob("en-US")]);
+      mocks.db.brandStudioProfile.findUnique.mockResolvedValue(slottedProfile());
+      setGraphqlResponse(multiItemCheckout);
+
+      await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
+      expect(mocks.generateAbandonedCartEmail).not.toHaveBeenCalled();
+      const sent = mocks.sendEmail.mock.calls[0][0] as { subject: string; html: string };
+      expect(sent.subject).toBe("A considered note 6");
+      expect(sent.html.match(/data-nomi-item/g)).toHaveLength(2);
+      expect(sent.html).toContain("Linen Throw");
+      expect(sent.html).toContain("Oak Tray");
+      expect(sent.html).toContain("&times; 2");
+      expect(sent.html).not.toContain("Stoneware Vase");
+      expect(sent.html).toContain('href="https://shop.example.com/checkouts/recover/checkout-token"');
+      expect(sent.html).not.toContain('href="https://paper-boat.example.com"');
+      expect(sent.html).toContain("Paper Boat · 1 Harbour St, Leith, UK");
+    });
+
+    it("generates at low effort when the customer reads another language", async () => {
+      mocks.db.emailJob.findMany.mockResolvedValue([cartJob("pt-BR")]);
+      mocks.db.brandStudioProfile.findUnique.mockResolvedValue(slottedProfile());
+      setGraphqlResponse(multiItemCheckout);
+
+      await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
+      expect(mocks.generateAbandonedCartEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ language: "pt" }),
+        { effort: "low" },
+      );
+    });
+
+    it("sends the approved review email pointing at the purchased product", async () => {
+      mocks.db.emailJob.findMany.mockResolvedValue([
+        { ...baseJob, payload: JSON.stringify({ order_id: 1042, shipment_status: "delivered", customer_locale: "en" }) },
+      ]);
+      mocks.db.brandStudioProfile.findUnique.mockResolvedValue(slottedProfile());
+      setGraphqlResponse(orderResponse);
+
+      await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
+      expect(mocks.generateReviewRequestEmail).not.toHaveBeenCalled();
+      const sent = mocks.sendEmail.mock.calls[0][0] as { subject: string; html: string };
+      expect(sent.subject).toBe("A considered note 10");
+      expect(sent.html).toContain("Linen Throw");
+      expect(sent.html).toContain('href="https://shop.example.com/products/linen-throw"');
+      expect(sent.html).not.toContain("$40.00");
+    });
   });
 
   it("retries a transient provider failure with exponential backoff", async () => {
@@ -487,8 +583,8 @@ describe("processPendingEmailJobs", () => {
       retried: 1,
       failed: 0,
     });
-    expect(mocks.db.emailJob.update).toHaveBeenLastCalledWith({
-      where: { id: "job-1" },
+    expect(mocks.db.emailJob.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "job-1", status: "processing" },
       data: {
         status: "pending",
         availableAt: new Date("2026-08-19T12:02:00.000Z"),
@@ -503,8 +599,8 @@ describe("processPendingEmailJobs", () => {
     mocks.sendEmail.mockRejectedValue(new Error("provider unavailable"));
 
     await expect(processPendingEmailJobs()).resolves.toMatchObject({ failed: 1 });
-    expect(mocks.db.emailJob.update).toHaveBeenLastCalledWith({
-      where: { id: "job-1" },
+    expect(mocks.db.emailJob.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "job-1", status: "processing" },
       data: {
         status: "failed",
         availableAt: new Date("2026-08-19T12:32:00.000Z"),
@@ -519,8 +615,8 @@ describe("processPendingEmailJobs", () => {
     mocks.sendEmail.mockRejectedValue(new Error("x".repeat(2_500)));
 
     await processPendingEmailJobs();
-    expect(mocks.db.emailJob.update).toHaveBeenLastCalledWith({
-      where: { id: "job-1" },
+    expect(mocks.db.emailJob.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "job-1", status: "processing" },
       data: expect.objectContaining({ lastError: "x".repeat(2_000) }),
     });
   });

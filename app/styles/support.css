@@ -1,0 +1,652 @@
+.nomi-support {
+  --help-ink: #201e1d;
+  --help-paper: #f3f2f2;
+  --help-rule: #e5e2df;
+  --help-cyan: #00789e;
+  --help-muted: #706a65;
+  color: var(--help-ink);
+  font:
+    14px/1.55 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+.nomi-support *,
+.nomi-support *::before,
+.nomi-support *::after {
+  box-sizing: border-box;
+}
+.nomi-support :is(button, input, textarea) {
+  font: inherit;
+}
+.nomi-support button {
+  cursor: pointer;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  min-height: 44px;
+  transition:
+    background 0.18s,
+    color 0.18s,
+    transform 0.18s,
+    border-color 0.18s;
+}
+.nomi-support button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.nomi-support :is(button, a, input, textarea):focus-visible {
+  outline: 2px solid var(--help-cyan);
+  outline-offset: 3px;
+}
+.nomi-support svg {
+  flex: none;
+}
+.nomi-support-launcher {
+  position: fixed;
+  z-index: 150;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px;
+  height: 52px;
+  border-radius: 4px;
+  background: var(--help-ink) !important;
+  color: #fff !important;
+  box-shadow:
+    0 2px 3px #201e1d0a,
+    0 6px 20px #201e1d18;
+  font-weight: 500 !important;
+}
+.nomi-support-launcher:hover {
+  transform: translateY(-2px);
+  background: #393532 !important;
+}
+.nomi-support-launcher:active {
+  transform: translateY(0);
+}
+/* A team reply waiting to be read. Magenta is Nomi's one spot accent. */
+.nomi-support-unread {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #d6006c;
+  border: 2px solid #fff;
+}
+.nomi-support-launcher.is-open {
+  background: #fff !important;
+  color: var(--help-ink) !important;
+  border: 1px solid var(--help-rule);
+}
+.nomi-support-panel {
+  position: fixed;
+  z-index: 151;
+  bottom: 88px;
+  right: 24px;
+  width: 408px;
+  height: min(700px, calc(100dvh - 112px));
+  max-width: calc(100vw - 20px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #dedbd8;
+  border-radius: 4px;
+  box-shadow:
+    0 2px 5px #201e1d08,
+    0 20px 60px -16px #201e1d30;
+  transform-origin: bottom right;
+  animation: nomi-support-enter 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.nomi-support-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px 10px 22px;
+  flex: none;
+}
+.nomi-support-lockup {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font:
+    600 25px/1 "Source Serif 4",
+    Georgia,
+    serif;
+}
+.nomi-support-help-label {
+  color: var(--help-muted);
+  font:
+    400 11px/1.5 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  border-left: 1px solid #d4cfcb;
+  padding-left: 12px;
+  margin-left: 9px;
+}
+.nomi-support-icon {
+  width: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+}
+.nomi-support-icon:hover {
+  background: var(--help-paper);
+}
+.nomi-support-tabs {
+  display: flex;
+  gap: 24px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--help-rule);
+  flex: none;
+}
+.nomi-support-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 0 10px;
+  border-bottom: 2px solid transparent;
+  color: var(--help-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.nomi-support-tabs svg {
+  width: 16px;
+  height: 16px;
+}
+.nomi-support-tabs button[aria-pressed="true"] {
+  color: var(--help-ink);
+  border-bottom-color: var(--help-ink);
+}
+.nomi-support-tabs button:hover {
+  color: var(--help-cyan);
+}
+.nomi-support-messages,
+.nomi-support-guides {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 20px 28px;
+  scrollbar-width: thin;
+  scrollbar-color: #ccc7c3 transparent;
+}
+.nomi-support-welcome {
+  padding-top: 7px;
+}
+.nomi-support-eyebrow {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--help-muted);
+}
+.nomi-support h2 {
+  font:
+    400 36px/1.13 "Source Serif 4",
+    Georgia,
+    serif;
+  letter-spacing: -1px;
+  margin: 12px 0 15px;
+  color: var(--help-ink);
+}
+.nomi-support p {
+  margin: 0;
+}
+.nomi-support-welcome > p {
+  color: var(--help-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.nomi-support-prompts {
+  margin-top: 20px;
+}
+.nomi-support-prompts > span {
+  margin-bottom: 9px;
+  font-size: 9px;
+}
+.nomi-support-prompts button {
+  width: 100%;
+  text-align: left;
+  border-bottom: 1px solid var(--help-rule);
+  padding: 12px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+}
+.nomi-support-prompts button > span {
+  color: var(--help-muted);
+  transition: transform 0.18s;
+}
+.nomi-support-prompts button:hover {
+  color: var(--help-cyan);
+}
+.nomi-support-prompts button:hover > span {
+  transform: translate(2px, -2px);
+  color: var(--help-cyan);
+}
+.nomi-support-conversation-label {
+  text-align: center;
+  color: var(--help-muted);
+  font-size: 10px;
+  padding: 0 0 22px;
+}
+.nomi-support-message {
+  margin: 0 18px 22px 0;
+  overflow-wrap: anywhere;
+  animation: nomi-support-message-in 0.2s ease-out;
+}
+.nomi-support-message p {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.nomi-support-author {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-bottom: 7px;
+  color: var(--help-muted);
+}
+.nomi-support-author time {
+  font-size: 9px;
+  font-weight: 400;
+}
+.nomi-support-message--merchant {
+  padding: 12px 15px;
+  margin-left: 25px;
+  margin-right: 0;
+  background: var(--help-paper);
+  border-radius: 4px;
+}
+.nomi-support-message--agent {
+  padding-left: 14px;
+  border-left: 2px solid var(--help-cyan);
+}
+.nomi-support-message--system {
+  padding: 12px 0;
+  border-top: 1px solid var(--help-rule);
+  border-bottom: 1px solid var(--help-rule);
+  margin-right: 0;
+}
+.nomi-support-message--system p {
+  font-size: 12px;
+  color: var(--help-muted);
+}
+.nomi-support-pending {
+  opacity: 0.65;
+}
+.nomi-support-bottom {
+  flex: none;
+  padding: 0 20px 14px;
+  background: #fff;
+  max-height: 65%;
+  overflow: auto;
+}
+.nomi-support-compose {
+  border: 1px solid #ccc7c3;
+  border-radius: 4px;
+  padding: 14px 12px 10px 15px;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s;
+}
+.nomi-support-compose:focus-within {
+  border-color: var(--help-cyan);
+  box-shadow: 0 0 0 3px #0088b00d;
+}
+.nomi-support textarea {
+  display: block;
+  width: 100%;
+  resize: none;
+  height: 48px;
+  padding: 0;
+  color: var(--help-ink);
+  background: #fff;
+  border: none;
+  outline: none !important;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.nomi-support textarea::placeholder {
+  color: #827b75;
+}
+.nomi-support-compose > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.nomi-support-compose > div > span {
+  font-size: 9px;
+  color: var(--help-muted);
+  max-width: 230px;
+}
+.nomi-support .nomi-support-primary {
+  background: var(--help-cyan);
+  color: #fff;
+  border-radius: 3px;
+  padding: 10px 16px;
+  font-weight: 500;
+}
+.nomi-support .nomi-support-primary:hover:not(:disabled) {
+  background: #00617f;
+}
+.nomi-support-compose .nomi-support-primary {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.nomi-support-compose .nomi-support-primary:disabled {
+  background: var(--help-paper);
+  color: #99918a;
+  opacity: 1;
+}
+.nomi-support-handoff {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--help-muted);
+  padding-top: 4px;
+}
+.nomi-support-handoff button {
+  color: var(--help-ink);
+  padding: 0;
+  font-size: 11px;
+  font-weight: 500;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.nomi-support-handoff button:hover {
+  color: var(--help-cyan);
+}
+.nomi-support-footnote {
+  font-size: 9px;
+  text-align: center;
+  color: #827b75;
+  padding-top: 3px;
+}
+.nomi-support-error {
+  font-size: 12px;
+  color: #8e2424;
+  padding: 10px 0;
+}
+.nomi-support-error button {
+  color: var(--help-cyan);
+  text-decoration: underline;
+  margin-left: 5px;
+}
+.nomi-support-contact {
+  border-top: 1px solid var(--help-rule);
+  padding-top: 12px;
+}
+.nomi-support-contact-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nomi-support h3 {
+  font:
+    500 22px/1.2 "Source Serif 4",
+    Georgia,
+    serif;
+  margin: 0;
+}
+.nomi-support-contact label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  margin: 15px 0 6px;
+}
+.nomi-support-contact > p {
+  font-size: 12px;
+  color: var(--help-muted);
+  line-height: 1.7;
+}
+.nomi-support input {
+  width: 100%;
+  border: 1px solid #ccc7c3;
+  border-radius: 3px;
+  min-height: 46px;
+  padding: 10px 12px;
+  background: #fff;
+  color: var(--help-ink);
+  font-size: 13px;
+}
+.nomi-support-request {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin: 12px 0;
+}
+.nomi-support-library-intro {
+  margin: 6px 0 24px;
+}
+.nomi-support-search {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.nomi-support-search > svg {
+  position: absolute;
+  left: 12px;
+  color: var(--help-muted);
+  width: 17px;
+  height: 17px;
+}
+.nomi-support-search input {
+  padding-left: 38px;
+  background: #faf9f8;
+  border-color: var(--help-rule);
+}
+.nomi-support-guide-list {
+  margin-top: 14px;
+}
+.nomi-support-guide-list button {
+  width: 100%;
+  border-bottom: 1px solid var(--help-rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  padding: 16px 0;
+  gap: 12px;
+  font-size: 13px;
+}
+.nomi-support-guide-list small {
+  display: block;
+  font-size: 10px;
+  color: var(--help-muted);
+  margin-bottom: 4px;
+}
+.nomi-support-guide-list button:hover {
+  color: var(--help-cyan);
+}
+.nomi-support-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--help-muted) !important;
+  margin: -10px 0 25px;
+  padding: 0;
+  font-size: 12px !important;
+}
+.nomi-support-guides article h2 {
+  font-size: 30px;
+}
+.nomi-support-guides article > p {
+  white-space: pre-wrap;
+  line-height: 1.9;
+  margin: 22px 0 30px;
+  font-size: 14px;
+}
+.nomi-support-guide-link {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 12px 15px;
+  border: 1px solid var(--help-rule);
+  border-radius: 3px;
+  color: var(--help-cyan);
+  text-decoration: none;
+  font-size: 13px;
+}
+.nomi-support-guide-link:hover {
+  background: var(--help-paper);
+}
+.nomi-support-article-help {
+  margin-top: 30px;
+  padding-top: 15px;
+  border-top: 1px solid var(--help-rule);
+  font-size: 12px;
+  color: var(--help-muted);
+}
+.nomi-support-article-help button {
+  display: block;
+  padding: 0;
+  color: var(--help-cyan);
+}
+.nomi-support-empty {
+  padding: 30px 0;
+}
+.nomi-support-empty p {
+  margin: 12px 0;
+  color: var(--help-muted);
+}
+.nomi-support-empty button {
+  color: var(--help-cyan);
+  padding: 0;
+}
+.nomi-support-note {
+  font-size: 11px;
+  color: var(--help-muted);
+  padding: 14px 0;
+}
+.nomi-support-typing {
+  display: flex;
+  gap: 5px;
+  padding: 5px 0 15px;
+}
+.nomi-support-typing i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #918981;
+  animation: nomi-support-pulse 1s infinite alternate;
+}
+.nomi-support-typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.nomi-support-typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.nomi-support-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@keyframes nomi-support-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes nomi-support-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes nomi-support-pulse {
+  to {
+    opacity: 0.3;
+    transform: translateY(-2px);
+  }
+}
+@media (max-width: 480px) {
+  .nomi-support-launcher {
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    height: 48px;
+  }
+  .nomi-support-panel {
+    right: 10px;
+    bottom: calc(68px + env(safe-area-inset-bottom));
+    width: calc(100vw - 20px);
+    height: min(700px, calc(100dvh - 78px - env(safe-area-inset-bottom)));
+  }
+  .nomi-support-messages,
+  .nomi-support-guides {
+    padding: 22px;
+  }
+  .nomi-support h2 {
+    font-size: 33px;
+  }
+  .nomi-support-help-label {
+    font-size: 10px;
+  }
+  .nomi-support :is(input, textarea) {
+    font-size: 16px;
+  }
+  .nomi-support-compose > div > span {
+    font-size: 8px;
+  }
+}
+@media (max-height: 650px) {
+  .nomi-support-panel {
+    bottom: 12px;
+    height: calc(100dvh - 24px);
+  }
+  .nomi-support-launcher.is-open {
+    visibility: hidden;
+  }
+  .nomi-support-welcome {
+    padding-top: 0;
+  }
+  .nomi-support-prompts {
+    margin-top: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nomi-support *,
+  .nomi-support *::before {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -58,13 +58,61 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
     `app.campaigns.tsx`'s action. `ProductImageCutout` (Prisma) caches a hit
     per shop+product+source-photo so the same product is never billed to
     the paid removal API twice.
-  - `campaign-image-plan.ts` + `image-generation.ts` — optional AI
-    photography for campaigns. Claude plans 0–3 text-free photos (seeing
-    real product photos and the approved brand), OpenAI's Image API
-    (`OPENAI_IMAGE_MODEL`, default `gpt-image-2.5-sunburst`) renders them,
-    and `app.campaigns.tsx` hosts them via `uploadImageBufferToShopify`
-    (`waitForReadyMs`, since there is no fallback photo). Off when
-    `OPENAI_API_KEY` is unset or `NOMI_CAMPAIGN_IMAGES=off`.
+  - `campaign-creative-plan.ts` + `image-generation.ts` — the campaign
+    creative director and optional AI photography. Claude plans the whole
+    email (which sections, how many, what order, and how many text-free
+    photos, with no fixed template; every email gets a CTA), OpenAI's Image
+    API (`OPENAI_IMAGE_MODEL`, default `gpt-image-2.5-sunburst`) renders the
+    photos, `campaign-image-review.ts` checks each one, and
+    `app.campaigns.tsx` hosts them via `uploadImageBufferToShopify`. The
+    email is written while photos render, using placeholder srcs from
+    `generated-photo-slots.ts` that are swapped (or the `<img>` removed) at
+    the end. Off when `OPENAI_API_KEY` is unset or
+    `NOMI_CAMPAIGN_IMAGES=off`. The photo rules (no hands/skin, no text,
+    faithful products) live once in `photo-direction-rules.ts`.
+  - Brand Studio's 13 lifecycle emails are built by the campaign pipeline,
+    one email at a time (`app/brand-studio/campaign-engine.server.ts`): the
+    campaign creative director plans each, its photos render, the campaign
+    designer writes it from a lifecycle brief (flow, role, creative brief,
+    approved copy), and it is checked against the Brand Studio quality gate
+    and rewritten once with the exact problems if it fails. The first build,
+    Regenerate all, and single-email regenerate all use it. The older
+    batch-per-flow writer (`generateCreativeEmailFamilyWithSonnet`) and the
+    shared photo kit below are no longer called by any route.
+  - `lifecycle-photo-kit-plan.ts` — Brand Studio's photo director: reads
+    the 13 creative briefs and plans a small reusable photo kit (which
+    emails use which photo; often only some emails get one). Rendering,
+    review, hosting, and the $3-cap cost live in
+    `app/brand-studio/photo-kit.server.ts` (stored as
+    `BrandStudioProfile.photoKit`, reused by every regenerate) via the shared
+    `app/dashboard/generated-photo.server.ts`.
+  - `personal-slots.ts` — the send path for abandoned cart and review
+    request. Brand Studio writes cart-1/2/3 and review-request with a
+    `data-nomi-slot="items"` row and a `data-nomi-field="action-url"` CTA;
+    the worker (`process-jobs.server.ts`) fills in the customer's real items
+    and checkout/product link by code, no Claude call. It falls back to
+    per-send generation at low effort when the customer's language differs
+    from the store's or the approved email predates the markup.
+- `app/billing/` — plans and limits. `plans.ts` is the one source of prices
+  and allowances (Free $0 one-time trial, Starter $29, Growth $79, Pro $199;
+  extra emails $5 per 500). `usage.server.ts` checks an allowance before any
+  AI spend and records it after success; campaigns, single regenerate,
+  Regenerate all, the Brand Studio build, and the send worker all call it.
+  Charging goes through Shopify App Pricing (Partner Dashboard plans), which
+  needs the app listed publicly; until then `/app/pricing` switches plans
+  freely on development stores only.
+- `app/support/` — the in-app help chat (`SupportWidget.tsx`, mounted in
+  `app.tsx` on every page) and its backend (`api.support.tsx`). Merchant
+  questions are answered by Claude (`assistant.server.ts`), grounded on the
+  Help library in `guides.ts`, the plans, and the shop's live state (plan and
+  usage, sending on/off, Brand Studio status, recent unsent emails); keyword
+  guide lookup is the fallback when there's no API key, the call fails, or a
+  shop passes 60 AI answers a day. "Talk to the team" hands the conversation
+  to a person: `SupportNotification` emails the team
+  (`NOMI_SUPPORT_EMAIL`, default ombarvaliya7@gmail.com) from the email-jobs
+  worker, the team answers at `/support-inbox` (password
+  `NOMI_SUPPORT_ADMIN_SECRET`, 32+ chars), and the merchant gets a "The Nomi
+  team replied" email plus an unread dot on the launcher.
 - `app/email-delivery/` — Resend provider adapter, durable webhook queue,
   and worker. Webhook routes only enqueue; never call Claude or Resend in a
   Shopify webhook request.
@@ -164,6 +212,10 @@ brand skin per shop, never these colors.
 - Email sending needs `RESEND_API_KEY`, a verified `NOMI_FROM_EMAIL`,
   optional `NOMI_FROM_NAME`, and `EMAIL_JOB_SECRET`. Never generate or send
   inside the webhook route; run the worker endpoint separately.
+- The Templates route (`/app/additional`, Gauge/Denizen looks) and
+  `/app/template-editor` are hidden in production (nav link removed, routes
+  redirect to `/app`) but kept in the code. They show in local dev, or in
+  production with `NOMI_TEMPLATES=on`. Gate: `app/dashboard/reference-looks.server.ts`.
 - Campaign product-photo cutouts are optional: set `REMOVE_BG_API_KEY` (a
   remove.bg key) to turn them on. Unset, campaigns generate exactly as
   before — no cutout offered, no extra call, no cost.

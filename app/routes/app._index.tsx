@@ -27,13 +27,20 @@ import { brandEvidenceSchema, safeJson, type BrandEvidence } from "../brand-stud
 import { isLumenDemoShop, normalizeLumenBrandEvidence } from "../brand-studio/shopify-evidence.server";
 import { loadDashboardShopName } from "../dashboard/dashboard-data.server";
 import { appEmbedEditorUrl, loadAppEmbedStatus } from "../dashboard/app-embed.server";
+import { loadDashboardEmailStats } from "../email-delivery/email-stats.server";
 import type { BrandStudioMetadataActionResult } from "./app.brand-studio.metadata";
+import { RegenerateEmailModal } from "../components/regenerate-email-modal";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const url = new URL(request.url);
   const showFlowEditor =
     url.pathname === "/app/flow-editor" || url.searchParams.get("view") === "flows";
+  // Dashboard flow rows link to /app/flow-editor?flow=<id> to open that flow.
+  const requestedFlow = url.searchParams.get("flow");
+  const initialFlowId = LIFECYCLE_FLOWS.some(({ id }) => id === requestedFlow)
+    ? (requestedFlow as (typeof LIFECYCLE_FLOWS)[number]["id"])
+    : null;
 
   const providerConfigured = isEmailDeliveryConfigured();
   const [settings, pendingJobs, brandProfile] = await Promise.all([
@@ -105,8 +112,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const approvedBrand = approvedFamily?.brandSystem ?? null;
   const brandPreviewHtmlById = approvedFamily?.renderedEmails ?? {};
 
+  const [emailStats, recentCampaigns, campaignCount] = showFlowEditor
+    ? [null, [], 0]
+    : await Promise.all([
+        loadDashboardEmailStats(session.shop, new Date(Date.now() - 30 * 24 * 60 * 60_000)),
+        db.campaign.findMany({
+          where: { shop: session.shop },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: { id: true, name: true, status: true, createdAt: true, html: true },
+        }),
+        db.campaign.count({ where: { shop: session.shop } }),
+      ]);
+
   return {
     showFlowEditor,
+    initialFlowId,
+    emailStats,
+    // Campaigns don't send yet (SPEC.md), so the dashboard lists them with
+    // zero delivery stats rather than inventing any.
+    campaigns: {
+      total: campaignCount,
+      recent: recentCampaigns.map(({ id, name, status, createdAt, html }) => ({
+        id,
+        name,
+        status,
+        createdAt: createdAt.toISOString(),
+        editable: Boolean(html),
+      })),
+    },
     shopName,
     shopDomain: session.shop,
     themeName,
@@ -305,7 +339,6 @@ function EditActionsMenu({
   onClose,
   onEditMetadata,
   onRegenerate,
-  busy,
   recipeId,
 }: {
   isOpen: boolean;
@@ -314,7 +347,6 @@ function EditActionsMenu({
   onClose: () => void;
   onEditMetadata: () => void;
   onRegenerate: () => void;
-  busy: boolean;
   recipeId: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -335,10 +367,9 @@ function EditActionsMenu({
         className="nomi-edit-menu-trigger"
         aria-expanded={isOpen}
         aria-haspopup="menu"
-        disabled={busy}
         onClick={onToggle}
       >
-        {busy ? "Rebuilding…" : "Edit"} <FlowChevronIcon />
+        Edit <FlowChevronIcon />
       </button>
       {isOpen ? (
         <div className="nomi-edit-menu-list" role="menu">
@@ -788,6 +819,9 @@ function LanguageMenu({
 export default function Index() {
   const {
     showFlowEditor,
+    initialFlowId,
+    emailStats,
+    campaigns,
     shopName,
     delivery,
     brand,
@@ -803,32 +837,20 @@ export default function Index() {
   // twice in development.
   const [showOnboarding, setShowOnboarding] = useState(false);
   const navigate = useNavigate();
-  const [selectedTemplateId, setSelectedTemplateId] = useState<LifecycleEmailId>("welcome-1");
-  const [expandedFlowId, setExpandedFlowId] = useState<ReferenceFlowId | "">("welcome");
+  const initialFlow = LIFECYCLE_FLOWS.find(({ id }) => id === initialFlowId);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<LifecycleEmailId>(
+    initialFlow?.templateIds[0] ?? "welcome-1",
+  );
+  const [expandedFlowId, setExpandedFlowId] = useState<ReferenceFlowId | "">(
+    initialFlow?.id ?? "welcome",
+  );
+  useEffect(() => {
+    const flow = LIFECYCLE_FLOWS.find(({ id }) => id === initialFlowId);
+    if (!flow) return;
+    setExpandedFlowId(flow.id);
+    setSelectedTemplateId(flow.templateIds[0]);
+  }, [initialFlowId]);
   const [trialStarted, setTrialStarted] = useState(false);
-  const regenerateFetcher = useFetcher<{
-    ok: boolean;
-    recipeId: string | null;
-    status?: "pending" | "done" | "error";
-    html?: string;
-    error?: string;
-  }>();
-  // Generating one fully art-directed email routinely takes longer than the
-  // dev tunnel's ~100s proxy timeout, so the route itself now returns
-  // "pending" almost instantly and does the real work in the background.
-  // This tracks which recipe we're waiting on across that poll loop —
-  // `regenerateFetcher.state` alone would flicker to "idle" between polls
-  // and make the button look done when it isn't.
-  const [pollingRecipeId, setPollingRecipeId] = useState<string | null>(null);
-  const submittingRecipeId = pollingRecipeId ?? undefined;
-  const isRegenerating = pollingRecipeId !== null;
-  const regenerateErrorId =
-    !isRegenerating && regenerateFetcher.data?.status === "error"
-      ? regenerateFetcher.data.recipeId
-      : null;
-  const regenerateError = regenerateErrorId
-    ? regenerateFetcher.data?.error ?? null
-    : null;
   // The preview panel otherwise depends entirely on `brand.previewHtmlById`
   // from the route loader being revalidated after a successful regenerate.
   // That revalidation is a plain GET behind whatever sits in front of this
@@ -839,41 +861,15 @@ export default function Index() {
   const [regeneratedHtmlById, setRegeneratedHtmlById] = useState<
     Partial<Record<LifecycleEmailId, string>>
   >({});
-  useEffect(() => {
-    const result = regenerateFetcher.data;
-    if (regenerateFetcher.state !== "idle" || !result?.recipeId) return;
-    if (result.status === "pending") {
-      const recipeId = result.recipeId;
-      const timer = setTimeout(() => {
-        regenerateFetcher.submit(
-          { recipeId },
-          { method: "post", action: "/app/brand-studio/regenerate" },
-        );
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-    setPollingRecipeId(null);
-    if (result.status === "done" && result.html) {
-      const recipeId = result.recipeId as LifecycleEmailId;
-      const html = result.html;
-      setRegeneratedHtmlById((current) =>
-        current[recipeId] === html ? current : { ...current, [recipeId]: html },
-      );
-    }
-  }, [regenerateFetcher.state, regenerateFetcher.data]);
   const [previewMenuOpen, setPreviewMenuOpen] = useState(false);
   const [editingMetadataId, setEditingMetadataId] = useState<LifecycleEmailId | null>(null);
   const editMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [savedMetadataById, setSavedMetadataById] = useState<
     Partial<Record<LifecycleEmailId, { subject: string; previewText: string }>>
   >({});
-  const requestRegenerate = (recipeId: string) => {
-    setPollingRecipeId(recipeId);
-    regenerateFetcher.submit(
-      { recipeId },
-      { method: "post", action: "/app/brand-studio/regenerate" },
-    );
-  };
+  // "Regenerate email" opens the brief modal; it builds the new version,
+  // shows it, and only a Save there replaces this email (onSaved below).
+  const [regenerateModalId, setRegenerateModalId] = useState<LifecycleEmailId | null>(null);
   const deliveryFetcher = useFetcher<typeof action>();
 
   const onboardingStorageKey = `nomi:onboarding:${shopName}:${ONBOARDING_VERSION}`;
@@ -970,8 +966,12 @@ export default function Index() {
             id: flow.id,
             ready: flowTemplates.filter(({ generatedHtml }) => Boolean(generatedHtml)).length,
             total: flowTemplates.length,
+            stats: emailStats?.flows[flow.id] ?? null,
           };
         })}
+        uniqueRecipients={emailStats?.uniqueRecipients ?? 0}
+        campaigns={campaigns}
+        currency={emailStats?.currency ?? null}
         generatedCount={generatedCount}
         totalEmailCount={referenceTemplates.length}
         sendingEnabled={delivery.sendingEnabled}
@@ -1200,11 +1200,10 @@ export default function Index() {
                   <EditActionsMenu
                     isOpen={previewMenuOpen}
                     triggerRef={editMenuTriggerRef}
-                    busy={isRegenerating && submittingRecipeId === selectedTemplate.id}
                     onToggle={() => setPreviewMenuOpen((open) => !open)}
                     onClose={() => setPreviewMenuOpen(false)}
                     onEditMetadata={() => setEditingMetadataId(selectedTemplate.id)}
-                    onRegenerate={() => requestRegenerate(selectedTemplate.id)}
+                    onRegenerate={() => setRegenerateModalId(selectedTemplate.id)}
                     recipeId={selectedTemplate.id}
                   />
                 ) : (
@@ -1214,12 +1213,6 @@ export default function Index() {
                 )}
               </div>
             </div>
-            {regenerateErrorId === selectedTemplate.id ? (
-              <small className="nomi-flow-generate-error" role="alert">
-                {regenerateError}
-              </small>
-            ) : null}
-
             <div className="nomi-flow-inbox-meta">
               <div><strong>From</strong><span>{delivery.fromAddress ?? `${shopName} via Nomi`}</span></div>
               <div><strong>Subject</strong><span>{selectedTemplate.subject}</span></div>
@@ -1241,6 +1234,20 @@ export default function Index() {
           </aside>
         </div>
       </div>
+      {regenerateModalId ? (
+        <RegenerateEmailModal
+          emailLabel={
+            referenceTemplates.find(({ id }) => id === regenerateModalId)?.name ?? "email"
+          }
+          recipeId={regenerateModalId}
+          onClose={() => setRegenerateModalId(null)}
+          onSaved={(html) => {
+            const recipeId = regenerateModalId;
+            setRegeneratedHtmlById((current) => ({ ...current, [recipeId]: html }));
+            setRegenerateModalId(null);
+          }}
+        />
+      ) : null}
       {editingMetadataTemplate ? (
         <SubjectPreviewDialog
           key={editingMetadataTemplate.id}

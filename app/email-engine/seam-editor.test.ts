@@ -219,3 +219,32 @@ describe("validateSeamEditedHtml", () => {
     expect(validateSeamEditedHtml({ html })).toBe(html);
   });
 });
+
+describe("repeatable text and button seams", () => {
+  const campaign = `<table><tr><td><span data-nomi-seam="headline">Slow mornings</span>
+<p><span data-nomi-seam="text">Get the look</span></p>
+<p><span data-nomi-seam="text">A calm first step.</span></p>
+<a href="https://shop.example.com/products/loam"><span data-nomi-seam="button">Shop Loam</span></a>
+<a href="https://shop.example.com"><span data-nomi-seam="cta-label">Shop the ritual</span></a>
+</td></tr></table>`;
+
+  it("finds every text and button seam by document order, with button links", () => {
+    const byId = Object.fromEntries(findSeams(campaign).map((seam) => [seam.id, seam]));
+    expect(byId["text:0"]).toMatchObject({ kind: "text", text: "Get the look" });
+    expect(byId["text:1"]).toMatchObject({ kind: "text", text: "A calm first step." });
+    expect(byId["button:0"]).toMatchObject({ text: "Shop Loam", url: "https://shop.example.com/products/loam" });
+    expect(annotateSeamKeys(campaign)).toContain('data-nomi-seam-key="text:1"');
+  });
+
+  it("edits one repeatable seam and a secondary button's link", () => {
+    const edited = applyTextSeamEdit(campaign, "text:1", "A gentle <first> step.");
+    expect(edited).toContain("A gentle &lt;first&gt; step.");
+    expect(edited).toContain("Get the look");
+    const button = applyTextSeamEdit(campaign, "button:0", "Meet Loam", "https://shop.example.com/collections/care");
+    expect(findSeams(button).find((seam) => seam.id === "button:0")).toMatchObject({
+      text: "Meet Loam",
+      url: "https://shop.example.com/collections/care",
+    });
+    expect(() => applyTextSeamEdit(campaign, "text:9", "x")).toThrow(/no "text:9" seam/);
+  });
+});

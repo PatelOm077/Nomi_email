@@ -1,4 +1,9 @@
-export const BRAND_STUDIO_HARD_CAP_MICROS = 3_000_000;
+// Per-build safety net against a runaway loop, not a quality budget: output
+// quality comes first (the merchant raised it from $3 on 2026-09-28).
+// NOMI_BRAND_STUDIO_CAP_USD overrides it without a code change.
+const capUsd = Number(process.env.NOMI_BRAND_STUDIO_CAP_USD);
+export const BRAND_STUDIO_HARD_CAP_MICROS =
+  Number.isFinite(capUsd) && capUsd > 0 ? Math.round(capUsd * 1_000_000) : 25_000_000;
 
 export type AiUsage = {
   provider: "openai" | "anthropic";
@@ -29,7 +34,7 @@ export function estimateUsageMicros(usage: AiUsage): number {
 
 export function assertStageBudget(currentMicros: number, reservedMicros: number) {
   if (currentMicros + reservedMicros > BRAND_STUDIO_HARD_CAP_MICROS) {
-    throw new Error("This setup has reached Nomi's $3 generation limit. Continue with the saved direction or contact support before generating again.");
+    throw new Error(`This setup has reached Nomi's ${formatCost(BRAND_STUDIO_HARD_CAP_MICROS)} generation limit. Continue with the saved direction or contact support before generating again.`);
   }
 }
 

@@ -6,7 +6,7 @@
 // photos.
 import { useEffect, useRef, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Form, Link, useFetcher, useLoaderData } from "react-router";
+import { Form, Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -33,16 +33,20 @@ import {
   removeImageBackground,
 } from "../email-engine/background-removal";
 import {
-  generateImage,
   imageDimensions,
   isImageGenerationConfigured,
 } from "../email-engine/image-generation";
 import {
   finalizeSections,
   planCampaignCreative,
+  type CampaignImageBrief,
   type CampaignPlanInput,
 } from "../email-engine/campaign-creative-plan";
-import { reviewGeneratedImage } from "../email-engine/campaign-image-review";
+import { renderReviewedPhoto } from "../dashboard/generated-photo.server";
+import {
+  generatedPhotoPlaceholder,
+  resolveGeneratedPhotoPlaceholders,
+} from "../email-engine/generated-photo-slots";
 import type {
   NewsletterGeneratedImage,
   NewsletterProduct,
@@ -53,6 +57,7 @@ import { getApprovedBrandStudioFamily } from "../brand-studio/approved-family";
 import { loadDashboardShopName } from "../dashboard/dashboard-data.server";
 import { getSendingDomainSummary } from "../email-delivery/domains.server";
 import { CAMPAIGN_LIMIT_MESSAGE, UNVERIFIED_CAMPAIGN_LIMIT, campaignLimitReached } from "../email-delivery/sending-domain";
+import { checkAllowance, recordUsage } from "../billing/usage.server";
 import {
   loadCampaignCollectionProducts,
   loadCampaignStoreLinks,
@@ -64,6 +69,15 @@ import {
   type CampaignCatalogProduct,
   type GraphqlAdmin,
 } from "../dashboard/campaign-catalog.server";
+import {
+  CollectionPicker,
+  GENERATE_ERROR_STYLE,
+  MultiProductPicker,
+  PROMPT_TOOL_STYLE,
+  SingleProductPicker,
+  useOutsideClose,
+} from "../components/catalog-pickers";
+import { GeneratingProgress } from "../components/generating-progress";
 
 const CAMPAIGN_PAGE_SIZE = 12;
 
@@ -246,30 +260,46 @@ async function resolveProductCutout(
   return uploadedUrl;
 }
 
+// One planned photo, generated, reviewed, and hosted by the shared helper
+// (dashboard/generated-photo.server.ts). Resolves to the hosted URL or null.
+async function renderCampaignPhoto(
+  admin: GraphqlAdmin,
+  input: CampaignPlanInput,
+  image: CampaignImageBrief,
+  filename: string,
+): Promise<string | null> {
+  const result = await renderReviewedPhoto(admin, {
+    brief: image,
+    shopName: input.shopName,
+    products: input.products,
+    filename,
+  });
+  return result.url;
+}
+
 // The campaign's creative direction (see campaign-creative-plan.ts). Claude
-// first plans the whole email — which sections, in what order, and whether
-// any of them earns a generated photo (zero is a normal answer, two is the
-// ceiling). Each planned photo is then generated, reviewed by Claude against
-// the real product photos (campaign-image-review.ts), regenerated once with
-// the reviewer's issues if it fails, and hosted on the shop's own CDN.
-// Sections whose photo or data didn't survive are dropped or downgraded
-// before the designer sees the plan. Best-effort end to end: unset
-// OPENAI_API_KEY skips photos, and a planning error means the designer
-// composes freely exactly as before — never a failed campaign.
-async function runCreativeDirection(
+// plans the whole email — which sections, how many, in what order, and
+// whether any earns a generated photo — then the photos start rendering in
+// the background. The designer gets the plan straight away with a pending
+// placeholder per photo (generated-photo-slots.ts), so writing the email
+// and rendering its photos overlap instead of running back to back.
+// Best-effort end to end: unset OPENAI_API_KEY skips photos, and a planning
+// error means the designer composes freely exactly as before.
+async function planCreativeDirection(
   admin: GraphqlAdmin,
   input: CampaignPlanInput,
 ): Promise<{
   concept: string | null;
   sections: NewsletterSection[];
   generatedImages: NewsletterGeneratedImage[];
+  photos: Promise<Map<string, string | null>>;
 }> {
   let plan: Awaited<ReturnType<typeof planCampaignCreative>>;
   try {
     plan = await planCampaignCreative(input);
   } catch (error) {
     console.error("Campaign creative planning failed:", error);
-    return { concept: null, sections: [], generatedImages: [] };
+    return { concept: null, sections: [], generatedImages: [], photos: Promise.resolve(new Map()) };
   }
   console.info(
     `Campaign creative plan: ${plan.sections.map((section) => section.type).join(" → ")}; ` +
@@ -277,74 +307,42 @@ async function runCreativeDirection(
       `(planner tokens in/out ${plan.usage.inputTokens}/${plan.usage.outputTokens})`,
   );
 
-  const productPhoto = new Map(input.products.map((product) => [product.id, product.imageUrl] as const));
-  const stamp = Date.now();
-  const images = isImageGenerationConfigured()
-    ? await Promise.all(
-        plan.images.map(async (image, index): Promise<NewsletterGeneratedImage | null> => {
-          const references = image.productIds
-            .map((id) => productPhoto.get(id))
-            .filter((url): url is string => Boolean(url));
-          let prompt = image.prompt;
-          for (let attempt = 1; attempt <= 2; attempt += 1) {
-            const generated = await generateImage({ prompt, aspect: image.aspect, referenceImageUrls: references });
-            if (!generated) return null;
-            let review: Awaited<ReturnType<typeof reviewGeneratedImage>>;
-            try {
-              review = await reviewGeneratedImage({
-                imageBytes: generated.bytes,
-                contentType: generated.contentType,
-                brief: image.prompt,
-                shopName: input.shopName,
-                products: input.products,
-                productIds: image.productIds,
-              });
-            } catch (error) {
-              // No verdict means no evidence the photo is safe — drop it.
-              console.error("Campaign image review failed:", error);
-              return null;
-            }
-            console.info(
-              `Campaign photo ${image.key} attempt ${attempt}: ${review.pass ? "passed" : `rejected — ${review.issues.join(" ")}`}`,
-            );
-            if (!review.pass) {
-              prompt = `${image.prompt}\n\nA previous attempt was rejected. Correct these problems: ${review.issues.join(" ")}`;
-              continue;
-            }
-            const hostedUrl = await uploadImageBufferToShopify(admin, {
-              bytes: generated.bytes,
-              contentType: generated.contentType,
-              filename: `nomi-campaign-${stamp}-${index + 1}-${image.role}.jpg`,
-              alt: image.alt,
-              waitForReadyMs: 30_000,
-            });
-            if (!hostedUrl) return null;
-            return {
-              key: image.key,
-              url: (await optimizeEmailImageUrl(hostedUrl)) ?? hostedUrl,
-              alt: image.alt,
-              role: image.role,
-              ...imageDimensions(image.aspect),
-              productIds: image.productIds,
-            };
-          }
-          return null;
-        }),
-      )
-    : [];
-  const generatedImages = images.filter((image): image is NewsletterGeneratedImage => image !== null);
-
+  const briefs = isImageGenerationConfigured() ? plan.images : [];
+  // Data checks only (real products, collections, a discount code); photo
+  // failures are handled after rendering by removing that one <img>.
   const sections = finalizeSections(plan.sections, {
-    availableImages: new Map(generatedImages.map((image) => [image.key, image])),
+    availableImages: new Map(briefs.map((image) => [image.key, image])),
     hasCollections: input.collections.length > 0,
     hasDiscountCode: input.hasDiscountCode,
   });
-  // Only photos a surviving section actually places reach the designer.
   const placed = new Set(sections.map((section) => section.imageKey).filter(Boolean));
+  const toRender = briefs.filter((image) => placed.has(image.key));
+
+  const stamp = Date.now();
+  const photos = Promise.all(
+    toRender.map(async (image, index) => {
+      const url = await renderCampaignPhoto(
+        admin,
+        input,
+        image,
+        `nomi-campaign-${stamp}-${index + 1}-${image.role}.jpg`,
+      );
+      return [image.key, url] as const;
+    }),
+  ).then((entries) => new Map(entries));
+
   return {
     concept: plan.concept || null,
     sections,
-    generatedImages: generatedImages.filter((image) => placed.has(image.key)),
+    generatedImages: toRender.map((image) => ({
+      key: image.key,
+      url: generatedPhotoPlaceholder(image.key),
+      alt: image.alt,
+      role: image.role,
+      ...imageDimensions(image.aspect),
+      productIds: image.productIds,
+    })),
+    photos,
   };
 }
 
@@ -375,6 +373,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (campaignLimitReached(campaignCount, domain?.status)) {
     return { error: CAMPAIGN_LIMIT_MESSAGE };
   }
+  const allowance = await checkAllowance(session.shop, "campaign");
+  if (!allowance.allowed) return { error: allowance.message ?? "Your plan's campaigns are used up." };
 
   const prompt = parsed.prompt.trim();
   if (!prompt || prompt.length > 1000) {
@@ -431,6 +431,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // to use the real photo whenever no cutout is present.
   // The cutout cache and remove.bg are keyed on the original photo URL, so
   // email-sized URLs are only swapped in after the cutout is resolved.
+  const startedAt = Date.now();
+  const storeLinksPromise = loadCampaignStoreLinks(admin);
   const productsWithCutouts = await Promise.all(
     products.map(async (product) => {
       const cutoutImageUrl = product.imageUrl
@@ -456,16 +458,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       description: description ?? null,
     }),
   );
-  const storeLinks = await loadCampaignStoreLinks(admin);
-  const creative = await runCreativeDirection(admin, {
+  const storeLinks = await storeLinksPromise;
+  // Every campaign carries a call to action, so a destination must always
+  // exist: the shop's .myshopify.com address always serves its storefront
+  // when the primary-domain lookup fails.
+  const storefrontUrl = storeLinks.storefrontUrl ?? `https://${session.shop}`;
+  const creative = await planCreativeDirection(admin, {
     shopName,
     prompt: enrichedPrompt,
     products: newsletterProducts,
     collections: storeLinks.collections,
-    storefrontUrl: storeLinks.storefrontUrl,
+    storefrontUrl,
     hasDiscountCode: discount.method === "code" && Boolean(discount.code),
     brandIdentity,
   });
+  const plannedAt = Date.now();
 
   let html: string;
   try {
@@ -479,13 +486,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       concept: creative.concept,
       sections: creative.sections,
       collections: storeLinks.collections,
-      storefrontUrl: storeLinks.storefrontUrl,
+      storefrontUrl,
       brandIdentity,
     });
   } catch (error) {
     console.error("Campaign generation failed:", error);
     return { error: error instanceof Error ? error.message : "Couldn't generate that campaign — try again." };
   }
+  const writtenAt = Date.now();
+  const photos = resolveGeneratedPhotoPlaceholders(html, await creative.photos);
+  html = photos.html;
+  console.info(
+    `Campaign timing: planning ${Math.round((plannedAt - startedAt) / 1000)}s, ` +
+      `email ${Math.round((writtenAt - plannedAt) / 1000)}s, ` +
+      `waiting on photos ${Math.round((Date.now() - writtenAt) / 1000)}s; ` +
+      `photos placed [${photos.placed.join(", ")}], removed [${photos.removed.join(", ")}]`,
+  );
 
   const name = capitalize(prompt);
   const subject =
@@ -515,6 +531,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       html,
     },
   });
+  await recordUsage(session.shop, "campaign");
 
   return {
     campaign: {
@@ -529,43 +546,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 // --- Create Campaign flow -------------------------------------------------
-// A picker-driven creation experience: pick a method, search the real
+// A picker-driven creation experience: describe the campaign, search the real
 // catalogue for what to feature, set a discount, then generate a real
-// campaign draft with Claude (or preview a static template, which stays a
-// self-contained client-side preview — see beginGenerating below).
+// campaign draft with Claude.
 
-type Method = "ai" | "template";
 type Feature = "product" | "collection" | "all_products";
 type DiscountMethod = "code" | "none";
 type DiscountType = "percentage" | "fixed";
-type TemplateKey = "field" | "object" | "letter";
 type ModalStage = "closed" | "configure" | "generating";
 
+// Mirrors the real pipeline (plan, then the email and its photos in
+// parallel, then photo review and placement), paced by AI_LIVE_STEP_MS to
+// the ~1–2 minutes a campaign actually takes.
 const AI_ROWS = [
-  "Nomi AI is reading your prompt",
-  "Sketching campaign concepts",
-  "Writing your campaign copy",
-  "Painting the AI banner image",
-  "Crafting subject line & preview text",
+  "Reading your brief and products",
+  "Planning the email's sections",
+  "Designing the email and creating photos",
+  "Checking every photo against your products",
+  "Placing photos in your email",
   "Finalizing your email campaign",
 ];
-const TEMPLATE_ROWS = [
-  "Applying your brand direction",
-  "Populating layout with your content",
-  "Writing subject line & preview text",
-  "Polishing the details",
-  "Finalizing your email campaign",
-];
-const TEMPLATE_DELAYS = [7000, 8000, 8200, 7600, 7200];
-const AI_LIVE_STEP_MS = 2400;
+const AI_LIVE_STEP_MS = 18_000;
 const SETTLE_MS = 1500;
-const PHASE_COLORS = ["#0088b0", "#d6006c", "#edbb00", "#4b7b4e"];
-const CAMPAIGN_TEMPLATES: Array<{ key: TemplateKey; name: string; primary: string; accent: string }> = [
-  { key: "field", name: "Field Notes", primary: "#44634d", accent: "#d06942" },
-  { key: "object", name: "Object Study", primary: "#176d83", accent: "#edbb00" },
-  { key: "letter", name: "Open Letter", primary: "#e1a6b8", accent: "#8a3a53" },
-];
-const PEN_SEGMENTS = [{ max: 88, y: 58 }, { max: 70, y: 76 }, { max: 50, y: 94 }];
 
 function randomDiscountCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -582,451 +584,22 @@ function isoDateOffset(days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-// --- Real-catalogue pickers ------------------------------------------------
 
-// A fixed-size, overflow-clipped wrapper around the <img> — belt-and-braces
-// sizing so a real product photo (often several thousand pixels on a side)
-// can never balloon the row/trigger no matter its intrinsic dimensions.
-// Inline styles on purpose, in addition to the CSS classes: they apply
-// straight from the DOM node itself, so sizing can't be lost to a stylesheet
-// load race or a stale cache — see nomi.css for the class-based version of
-// the same rules.
-const THUMB_WRAP_STYLE: React.CSSProperties = {
-  position: "relative",
-  display: "block",
-  width: 40,
-  height: 40,
-  minWidth: 40,
-  maxWidth: 40,
-  maxHeight: 40,
-  borderRadius: 8,
-  overflow: "hidden",
-  flexShrink: 0,
-  flexGrow: 0,
-};
-const THUMB_IMG_STYLE: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  width: "100%",
-  height: "100%",
-  maxWidth: "100%",
-  maxHeight: "100%",
-  objectFit: "cover",
-  display: "block",
-};
-
-function ProductThumb({ product }: { product: Pick<CampaignCatalogProduct, "title" | "imageUrl"> }) {
-  return (
-    <span className="nomi-cc-picker-thumb" style={THUMB_WRAP_STYLE}>
-      {product.imageUrl ? <img src={product.imageUrl} alt="" style={THUMB_IMG_STYLE} /> : null}
-    </span>
-  );
-}
-
-// Same belt-and-braces reasoning as the thumb: the layout-critical box
-// model (size, flex, position) is inline so it can't be lost to a
-// stylesheet timing or caching issue. Colors/borders/hover states stay in
-// nomi.css — losing those would be a cosmetic miss, not a broken layout.
-const PICKER_WRAP_STYLE: React.CSSProperties = { position: "relative", width: "100%", maxWidth: "100%", boxSizing: "border-box" };
-// Trigger colors are inlined for the same reason the row colors below are:
-// .nomi-cc-picker-trigger's CSS-only background/border was observed
-// rendering as flat browser-default grey live (not the intended white),
-// inconsistently across reloads — see CAMPAIGNS.md. The values here are
-// also a deliberate refresh, not just a bugfix: a hairline neutral border
-// instead of a filled grey box, a faint resting shadow for depth, and a
-// cyan focus ring that only appears on open — restrained-cyan-for-feedback
-// per CLAUDE.md's brand rule, not a default framework blue.
-const TRIGGER_STYLE: React.CSSProperties = {
-  width: "100%", maxWidth: "100%", height: 48, maxHeight: 48, minHeight: 0,
-  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-  padding: "0 36px 0 12px", boxSizing: "border-box", overflow: "hidden",
-  cursor: "pointer", textAlign: "left",
-  background: "#ffffff", border: "1.5px solid #d7d3d3", borderRadius: 10,
-  color: "#201e1d", font: '13.5px/1 "IBM Plex Sans", sans-serif',
-  boxShadow: "0 1px 2px rgba(32, 30, 29, .05)",
-  transition: "border-color .15s ease, box-shadow .15s ease",
-};
-const TRIGGER_OPEN_STYLE: React.CSSProperties = {
-  ...TRIGGER_STYLE,
-  borderColor: "#0088b0",
-  boxShadow: "0 0 0 3px rgba(0, 136, 176, .14)",
-};
-const TRIGGER_VALUE_STYLE: React.CSSProperties = { display: "flex", alignItems: "center", gap: 10, minWidth: 0, maxWidth: "100%", overflow: "hidden" };
-const TRIGGER_TITLE_STYLE: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1, fontWeight: 600 };
-const PLACEHOLDER_STYLE: React.CSSProperties = { display: "flex", alignItems: "center", gap: 9, overflow: "hidden", color: "#716d6d" };
-const ARROW_STYLE: React.CSSProperties = { position: "absolute", right: 13, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#605d5d" };
-// Same reasoning again, extended to color/border: in this environment the
-// .nomi-cc-picker-row class was observed silently failing to apply (rows
-// fell back to the browser's native grey/bordered <button> chrome, even
-// though .nomi-cc-picker-panel right next to it rendered fine) — see
-// CAMPAIGNS.md. Inlining background/border/color on the row itself is the
-// only combination that's rendered correctly every time it's been checked
-// live.
-const PANEL_STYLE: React.CSSProperties = {
-  position: "absolute", zIndex: 30, top: "calc(100% + 6px)", left: 0, right: 0,
-  maxWidth: "100%", display: "flex", flexDirection: "column", overflow: "hidden",
-  background: "#ffffff", border: "1px solid #d7d3d3", borderRadius: 12,
-  boxShadow: "0 18px 44px rgba(32, 30, 29, .18)",
-};
-const SEARCH_WRAP_STYLE: React.CSSProperties = { position: "relative", flexShrink: 0, borderBottom: "1px solid #eae7e7" };
-const SEARCH_ICON_STYLE: React.CSSProperties = { position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#716d6d" };
-const SEARCH_INPUT_STYLE: React.CSSProperties = {
-  width: "100%", maxWidth: "100%", height: 42, maxHeight: 42, boxSizing: "border-box",
-  padding: "0 12px 0 34px", border: 0, outline: "none", flexShrink: 0,
-  background: "transparent", color: "#201e1d",
-};
-const LIST_STYLE: React.CSSProperties = { maxHeight: 248, minHeight: 56, overflowY: "auto", overflowX: "hidden", padding: 5, boxSizing: "border-box", background: "#ffffff" };
-const ROW_STYLE: React.CSSProperties = {
-  width: "100%", maxWidth: "100%", display: "flex", alignItems: "center", gap: 11,
-  height: 50, maxHeight: 50, minHeight: 0, padding: "4px 8px", boxSizing: "border-box",
-  overflow: "hidden", textAlign: "left", cursor: "pointer",
-  background: "transparent", border: 0, borderRadius: 7, color: "#201e1d",
-  font: '13.5px/1.3 "IBM Plex Sans", sans-serif',
-};
-const ROW_SELECTED_STYLE: React.CSSProperties = { ...ROW_STYLE, background: "#e9f8ff" };
-const ROW_DISABLED_STYLE: React.CSSProperties = { ...ROW_STYLE, opacity: 0.4, cursor: "not-allowed" };
-const ROW_TITLE_STYLE: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 };
-const CHECKBOX_STYLE: React.CSSProperties = { width: 19, height: 19, minWidth: 19, flexShrink: 0, display: "grid", placeItems: "center", boxSizing: "border-box" };
-const CHIP_LIST_STYLE: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 2, marginTop: 10, width: "100%" };
-const CHIP_ROW_STYLE: React.CSSProperties = { display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", width: "100%", boxSizing: "border-box" };
-const CHIP_INDEX_STYLE: React.CSSProperties = { width: 14, flexShrink: 0 };
-const CHIP_TITLE_STYLE: React.CSSProperties = { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-const CHIP_REMOVE_STYLE: React.CSSProperties = { width: 26, height: 26, minWidth: 26, display: "grid", placeItems: "center", border: 0, cursor: "pointer", flexShrink: 0, boxSizing: "border-box" };
-// Calm editorial pill instead of a solid cyan fill — a plain "feature a
-// product" utility icon isn't the active-feedback moment cyan is reserved
-// for (see CLAUDE.md brand rules), so a saturated blue chip read as loud.
-const PROMPT_TOOL_STYLE: React.CSSProperties = {
-  width: 24, height: 24, display: "grid", placeItems: "center", borderRadius: 7,
-  background: "#ffffff", border: "1px solid #99e0ff", color: "#006786", boxSizing: "border-box",
-};
-const GENERATE_ERROR_STYLE: React.CSSProperties = {
-  margin: "10px 0 0", padding: "9px 12px", borderRadius: 6,
-  background: "color-mix(in srgb, #d6006c 10%, transparent)", color: "#d6006c",
-  font: '600 12px/1.4 "IBM Plex Sans", sans-serif',
-};
-
-function useOutsideClose(open: boolean, ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [open, ref, onClose]);
-}
-
-function SingleProductPicker({ value, onChange, placeholder }: {
-  value: CampaignCatalogProduct | null;
-  onChange: (product: CampaignCatalogProduct) => void;
-  placeholder: string;
-}) {
-  const fetcher = useFetcher<{ products: CampaignCatalogProduct[] }>();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<number | null>(null);
-  const autoSelectedRef = useRef(false);
-
-  useOutsideClose(open, containerRef, () => setOpen(false));
-
-  useEffect(() => {
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      fetcher.load(`/app/campaigns?kind=products&q=${encodeURIComponent(query)}`);
-    }, query ? 250 : 0);
-    return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
-
-  useEffect(() => {
-    if (autoSelectedRef.current || value) return;
-    const products = fetcher.data?.products;
-    if (products && products.length) {
-      autoSelectedRef.current = true;
-      onChange(products[0]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetcher.data]);
-
-  const products = fetcher.data?.products ?? [];
-
-  return (
-    <div className="nomi-cc-picker" style={PICKER_WRAP_STYLE} ref={containerRef}>
-      <button type="button" className={`nomi-cc-picker-trigger${open ? " is-open" : ""}`} style={open ? TRIGGER_OPEN_STYLE : TRIGGER_STYLE} onClick={() => setOpen((isOpen) => !isOpen)}>
-        {value ? (
-          <span className="nomi-cc-picker-trigger-value" style={TRIGGER_VALUE_STYLE}>
-            <ProductThumb product={value} />
-            <span className="nomi-cc-picker-trigger-title" style={TRIGGER_TITLE_STYLE}>{value.title}</span>
-          </span>
-        ) : (
-          <span className="nomi-cc-picker-placeholder" style={PLACEHOLDER_STYLE}>{placeholder}</span>
-        )}
-        <span className="nomi-cc-select-arrow" style={ARROW_STYLE} aria-hidden="true"><svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 7.5L10 12.5L15 7.5" /></svg></span>
-      </button>
-      {open ? (
-        <div className="nomi-cc-picker-panel" style={PANEL_STYLE}>
-          <div className="nomi-cc-picker-search-wrap" style={SEARCH_WRAP_STYLE}>
-            <svg style={SEARCH_ICON_STYLE} width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="M13 13 L17 17" strokeLinecap="round" /></svg>
-            <input
-              type="text"
-              className="nomi-cc-picker-search"
-              style={SEARCH_INPUT_STYLE}
-              placeholder="Search products"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="nomi-cc-picker-list" style={LIST_STYLE}>
-            {fetcher.state !== "idle" && products.length === 0 ? (
-              <p className="nomi-cc-picker-empty">Searching…</p>
-            ) : products.length ? (
-              products.map((product) => (
-                <button
-                  type="button"
-                  key={product.id}
-                  className={`nomi-cc-picker-row${value?.id === product.id ? " is-selected" : ""}`}
-                  style={value?.id === product.id ? ROW_SELECTED_STYLE : ROW_STYLE}
-                  onClick={() => { onChange(product); setOpen(false); setQuery(""); }}
-                >
-                  <ProductThumb product={product} />
-                  <span className="nomi-cc-picker-row-title" style={ROW_TITLE_STYLE}>{product.title}</span>
-                </button>
-              ))
-            ) : (
-              <p className="nomi-cc-picker-empty">No products found.</p>
-            )}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function CollectionPicker({ value, onChange, placeholder }: {
-  value: CampaignCatalogCollection | null;
-  onChange: (collection: CampaignCatalogCollection) => void;
-  placeholder: string;
-}) {
-  const fetcher = useFetcher<{ collections: CampaignCatalogCollection[] }>();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<number | null>(null);
-  const autoSelectedRef = useRef(false);
-
-  useOutsideClose(open, containerRef, () => setOpen(false));
-
-  useEffect(() => {
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      fetcher.load(`/app/campaigns?kind=collections&q=${encodeURIComponent(query)}`);
-    }, query ? 250 : 0);
-    return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
-
-  useEffect(() => {
-    if (autoSelectedRef.current || value) return;
-    const collections = fetcher.data?.collections;
-    if (collections && collections.length) {
-      autoSelectedRef.current = true;
-      onChange(collections[0]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetcher.data]);
-
-  const collections = fetcher.data?.collections ?? [];
-
-  return (
-    <div className="nomi-cc-picker" style={PICKER_WRAP_STYLE} ref={containerRef}>
-      <button type="button" className={`nomi-cc-picker-trigger${open ? " is-open" : ""}`} style={open ? TRIGGER_OPEN_STYLE : TRIGGER_STYLE} onClick={() => setOpen((isOpen) => !isOpen)}>
-        {value ? (
-          <span className="nomi-cc-picker-trigger-title" style={TRIGGER_TITLE_STYLE}>{value.title}</span>
-        ) : (
-          <span className="nomi-cc-picker-placeholder" style={PLACEHOLDER_STYLE}>{placeholder}</span>
-        )}
-        <span className="nomi-cc-select-arrow" style={ARROW_STYLE} aria-hidden="true"><svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 7.5L10 12.5L15 7.5" /></svg></span>
-      </button>
-      {open ? (
-        <div className="nomi-cc-picker-panel" style={PANEL_STYLE}>
-          <div className="nomi-cc-picker-search-wrap" style={SEARCH_WRAP_STYLE}>
-            <svg style={SEARCH_ICON_STYLE} width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="M13 13 L17 17" strokeLinecap="round" /></svg>
-            <input
-              type="text"
-              className="nomi-cc-picker-search"
-              style={SEARCH_INPUT_STYLE}
-              placeholder="Search collections"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="nomi-cc-picker-list" style={LIST_STYLE}>
-            {fetcher.state !== "idle" && collections.length === 0 ? (
-              <p className="nomi-cc-picker-empty">Searching…</p>
-            ) : collections.length ? (
-              collections.map((collection) => (
-                <button
-                  type="button"
-                  key={collection.id}
-                  className={`nomi-cc-picker-row nomi-cc-picker-row-text${value?.id === collection.id ? " is-selected" : ""}`}
-                  style={value?.id === collection.id ? ROW_SELECTED_STYLE : ROW_STYLE}
-                  onClick={() => { onChange(collection); setOpen(false); setQuery(""); }}
-                >
-                  <span className="nomi-cc-picker-row-title" style={ROW_TITLE_STYLE}>{collection.title}</span>
-                </button>
-              ))
-            ) : (
-              <p className="nomi-cc-picker-empty">No collections found.</p>
-            )}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function MultiProductPicker({ value, onChange, max = 3 }: {
-  value: CampaignCatalogProduct[];
-  onChange: (products: CampaignCatalogProduct[]) => void;
-  max?: number;
-}) {
-  const fetcher = useFetcher<{ products: CampaignCatalogProduct[] }>();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<number | null>(null);
-
-  useOutsideClose(open, containerRef, () => setOpen(false));
-
-  useEffect(() => {
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      fetcher.load(`/app/campaigns?kind=products&q=${encodeURIComponent(query)}`);
-    }, query ? 250 : 0);
-    return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
-
-  const products = fetcher.data?.products ?? [];
-
-  const toggle = (product: CampaignCatalogProduct) => {
-    const exists = value.some((item) => item.id === product.id);
-    if (exists) { onChange(value.filter((item) => item.id !== product.id)); return; }
-    if (value.length >= max) return;
-    onChange([...value, product]);
-  };
-
-  return (
-    <div>
-      <div className="nomi-cc-picker" style={PICKER_WRAP_STYLE} ref={containerRef}>
-        <button type="button" className={`nomi-cc-picker-trigger${open ? " is-open" : ""}`} style={open ? TRIGGER_OPEN_STYLE : TRIGGER_STYLE} onClick={() => setOpen((isOpen) => !isOpen)}>
-          <span className="nomi-cc-picker-placeholder" style={PLACEHOLDER_STYLE}>
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="M13 13 L17 17" strokeLinecap="round" /></svg>
-            Search Products
-          </span>
-          <span className="nomi-cc-select-arrow" style={ARROW_STYLE} aria-hidden="true"><svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 7.5L10 12.5L15 7.5" /></svg></span>
-        </button>
-        {open ? (
-          <div className="nomi-cc-picker-panel" style={PANEL_STYLE}>
-            <div className="nomi-cc-picker-search-wrap" style={SEARCH_WRAP_STYLE}>
-              <svg style={SEARCH_ICON_STYLE} width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="M13 13 L17 17" strokeLinecap="round" /></svg>
-              <input
-                type="text"
-                className="nomi-cc-picker-search"
-                style={SEARCH_INPUT_STYLE}
-                placeholder="Search products"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="nomi-cc-picker-list" style={LIST_STYLE}>
-              {fetcher.state !== "idle" && products.length === 0 ? (
-                <p className="nomi-cc-picker-empty">Searching…</p>
-              ) : products.length ? (
-                products.map((product) => {
-                  const checked = value.some((item) => item.id === product.id);
-                  const disabled = !checked && value.length >= max;
-                  return (
-                    <button
-                      type="button"
-                      key={product.id}
-                      className={`nomi-cc-picker-row nomi-cc-picker-row-check${checked ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}
-                      style={disabled ? ROW_DISABLED_STYLE : checked ? ROW_SELECTED_STYLE : ROW_STYLE}
-                      onClick={() => toggle(product)}
-                      disabled={disabled}
-                    >
-                      <span className={`nomi-cc-picker-checkbox${checked ? " is-checked" : ""}`} style={CHECKBOX_STYLE} aria-hidden="true">
-                        {checked ? (
-                          <svg width="10" height="10" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10l4 4 8-8" /></svg>
-                        ) : null}
-                      </span>
-                      <ProductThumb product={product} />
-                      <span className="nomi-cc-picker-row-title" style={ROW_TITLE_STYLE}>{product.title}</span>
-                    </button>
-                  );
-                })
-              ) : (
-                <p className="nomi-cc-picker-empty">No products found.</p>
-              )}
-            </div>
-          </div>
-        ) : null}
-      </div>
-      {value.length ? (
-        <div className="nomi-cc-chip-list" style={CHIP_LIST_STYLE}>
-          {value.map((product, index) => (
-            <div className="nomi-cc-chip-row" style={CHIP_ROW_STYLE} key={product.id}>
-              <span className="nomi-cc-chip-index" style={CHIP_INDEX_STYLE}>{index + 1}.</span>
-              <ProductThumb product={product} />
-              <span className="nomi-cc-chip-title" style={CHIP_TITLE_STYLE}>{product.title}</span>
-              <button
-                type="button"
-                className="nomi-cc-chip-remove"
-                style={CHIP_REMOVE_STYLE}
-                aria-label={`Remove ${product.title}`}
-                onClick={() => onChange(value.filter((item) => item.id !== product.id))}
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// `id`/`html` are empty for the client-side-only "template" method (nothing
-// is persisted for that path — see beginGenerating below), which the reveal
-// card and its click-to-preview handle the same way CampaignPreviewModal
-// already handles a real campaign with no html: an empty-preview message,
-// no Edit link.
+// The just-created campaign, shown as a card until the merchant views the list.
 type Reveal = { id: string; title: string; subject: string; preview: string; discountLine: string; html: string };
 
-function CreateCampaignModal({ stage, onClose, onGenerate, rows, generatingStep, phaseColor, hopPct, penX, penY,
-  method, onMethodAi, onMethodTemplate, prompt, onPromptChange, feature, onFeatureProduct, onFeatureCollection,
+function CreateCampaignModal({ stage, onClose, onGenerate, generatingStep,
+  prompt, onPromptChange, feature, onFeatureProduct, onFeatureCollection,
   onFeatureAllProducts, selectedProduct, onSelectedProductChange, selectedCollection, onSelectedCollectionChange,
   selectedProducts, onSelectedProductsChange,
-  selectedTemplate, onSelectTemplate, discountMethod, onDiscountCode, onDiscountNone, discountCode,
+  discountMethod, onDiscountCode, onDiscountNone, discountCode,
   onDiscountCodeChange, onGenerateRandomCode, discountType, onDiscountTypeChange, discountValue,
   onDiscountValueChange, discountSuffix, startDate, onStartDateChange, startTime, onStartTimeChange,
-  endDate, onEndDateChange, endTime, onEndTimeChange, generateLabel, generateError }: {
+  endDate, onEndDateChange, endTime, onEndTimeChange, generateError }: {
   stage: Extract<ModalStage, "configure" | "generating">;
   onClose: () => void;
   onGenerate: () => void;
-  rows: string[];
   generatingStep: number;
-  phaseColor: string;
-  hopPct: number;
-  penX: number;
-  penY: number;
-  method: Method;
-  onMethodAi: () => void;
-  onMethodTemplate: () => void;
   prompt: string;
   onPromptChange: (value: string) => void;
   feature: Feature;
@@ -1039,8 +612,6 @@ function CreateCampaignModal({ stage, onClose, onGenerate, rows, generatingStep,
   onSelectedCollectionChange: (collection: CampaignCatalogCollection) => void;
   selectedProducts: CampaignCatalogProduct[];
   onSelectedProductsChange: (products: CampaignCatalogProduct[]) => void;
-  selectedTemplate: TemplateKey;
-  onSelectTemplate: (key: TemplateKey) => void;
   discountMethod: DiscountMethod;
   onDiscountCode: () => void;
   onDiscountNone: () => void;
@@ -1060,17 +631,8 @@ function CreateCampaignModal({ stage, onClose, onGenerate, rows, generatingStep,
   onEndDateChange: (value: string) => void;
   endTime: string;
   onEndTimeChange: (value: string) => void;
-  generateLabel: string;
   generateError: string | null;
 }) {
-  const phaseTotal = rows.length;
-  const phaseIdx = Math.min(generatingStep, phaseTotal - 1);
-  const phaseLabel = rows[phaseIdx];
-  const t1 = 1, t2 = Math.ceil(phaseTotal / 2), t3 = phaseTotal - 1;
-  const line1On = generatingStep >= t1, line2On = generatingStep >= t2, line3On = generatingStep >= t3;
-  const bannerOn = generatingStep >= t2;
-  const penVisible = generatingStep < phaseTotal;
-
   useEffect(() => {
     if (stage !== "configure") return;
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -1091,18 +653,6 @@ function CreateCampaignModal({ stage, onClose, onGenerate, rows, generatingStep,
             </div>
 
             <div className="nomi-cc-body">
-              <div>
-                <span className="nomi-cc-label">Choose method</span>
-                <div className="nomi-cc-seg">
-                  <button type="button" className={`nomi-cc-seg-btn${method === "ai" ? " is-active" : ""}`} onClick={onMethodAi}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 5.2L19 10l-5.4 1.8L12 17l-1.6-5.2L5 10l5.4-1.8Z" fill="currentColor" /></svg>
-                    Generate with AI
-                  </button>
-                  <button type="button" className={`nomi-cc-seg-btn${method === "template" ? " is-active" : ""}`} onClick={onMethodTemplate}>Start from template</button>
-                </div>
-              </div>
-
-              {method === "ai" ? (
                 <>
                   <div>
                     <span className="nomi-cc-label" style={{ color: "var(--nomi-cyan-700)", display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -1145,26 +695,6 @@ function CreateCampaignModal({ stage, onClose, onGenerate, rows, generatingStep,
                     )}
                   </div>
                 </>
-              ) : (
-                <div>
-                  <span className="nomi-cc-label" style={{ marginBottom: 10 }}>Start from one of your brand directions</span>
-                  <div className="nomi-cc-templates">
-                    {CAMPAIGN_TEMPLATES.map((template) => {
-                      const selected = selectedTemplate === template.key;
-                      return (
-                        <button type="button" key={template.key} className={`nomi-cc-template-card${selected ? " is-selected" : ""}`}
-                          style={{ "--_template-color": template.primary } as React.CSSProperties} onClick={() => onSelectTemplate(template.key)}>
-                          <span className="nomi-cc-template-dots">
-                            <i className="nomi-cc-template-dot" style={{ background: template.primary }} />
-                            <i className="nomi-cc-template-dot" style={{ background: template.accent }} />
-                          </span>
-                          <b className="nomi-cc-template-name">{template.name}</b>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
               <div className="nomi-cc-discount-box">
                 <span className="nomi-cc-discount-title">Campaign Discount</span>
@@ -1210,47 +740,12 @@ function CreateCampaignModal({ stage, onClose, onGenerate, rows, generatingStep,
               <button type="button" className="nomi-cc-discard" onClick={onClose}>Discard</button>
               <button type="button" className="nomi-cc-generate" onClick={onGenerate}>
                 <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 5.2L19 10l-5.4 1.8L12 17l-1.6-5.2L5 10l5.4-1.8Z" fill="currentColor" /></svg>
-                {generateLabel}
+                Generate
               </button>
             </div>
           </>
         ) : (
-          <div className="nomi-cc-generating">
-            <h2>Generating Your Campaign</h2>
-
-            <div className="nomi-cc-gen-card">
-              <div className="nomi-cc-gen-banner">
-                <i className={`nomi-cc-gen-banner-skeleton${bannerOn ? " is-hidden" : ""}`} />
-                <i className={`nomi-cc-gen-banner-fill${bannerOn ? " is-shown" : ""}`} />
-              </div>
-              <div className="nomi-cc-gen-lines">
-                <i className="nomi-cc-gen-line-track" style={{ width: "88%" }}><i className={`nomi-cc-gen-line-fill${line1On ? " is-on" : ""}`} style={{ background: "#201e1d" }} /></i>
-                <i className="nomi-cc-gen-line-track" style={{ width: "70%" }}><i className={`nomi-cc-gen-line-fill${line2On ? " is-on" : ""}`} style={{ background: "#746f6b" }} /></i>
-                <i className="nomi-cc-gen-line-track" style={{ width: "50%" }}><i className={`nomi-cc-gen-line-fill${line3On ? " is-on" : ""}`} style={{ background: "#0088b0" }} /></i>
-              </div>
-              {penVisible ? (
-                <div className="nomi-cc-gen-pen" style={{ left: penX, top: penY }}>
-                  <span className="nomi-cc-gen-pen-icon"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1Z" fill="#201e1d" /></svg></span>
-                  <i className="nomi-cc-gen-caret" />
-                </div>
-              ) : null}
-            </div>
-
-            <p key={generatingStep} className="nomi-cc-gen-phase">{phaseLabel}</p>
-
-            <div className="nomi-cc-hop-track">
-              <i className="nomi-cc-hop-line" />
-              <i className="nomi-cc-hop-fill" style={{ width: `calc(${hopPct}% - 3px)`, opacity: hopPct > 0 ? 1 : 0 }} />
-              {rows.map((row, index) => (
-                <i key={row} className={`nomi-cc-hop-dot${index <= phaseIdx ? " is-active" : ""}`} style={{ background: index <= phaseIdx ? PHASE_COLORS[index % PHASE_COLORS.length] : undefined }} />
-              ))}
-              <div className="nomi-cc-hop-marker" style={{ left: `${hopPct}%` }}>
-                <i key={generatingStep} className="nomi-cc-hop-marker-dot" style={{ background: phaseColor }} />
-              </div>
-            </div>
-
-            <p className="nomi-cc-gen-note">This usually takes 30–45 seconds.</p>
-          </div>
+          <GeneratingProgress title="Generating Your Campaign" rows={AI_ROWS} step={generatingStep} note="This usually takes 1–2 minutes." />
         )}
       </div>
     </div>
@@ -1666,13 +1161,11 @@ export default function CampaignsPage() {
   const generateFetcher = useFetcher<typeof action>();
 
   const [stage, setStage] = useState<ModalStage>("closed");
-  const [method, setMethod] = useState<Method>("ai");
   const [prompt, setPrompt] = useState("");
   const [feature, setFeature] = useState<Feature>("product");
   const [selectedProduct, setSelectedProduct] = useState<CampaignCatalogProduct | null>(null);
   const [selectedCollection, setSelectedCollection] = useState<CampaignCatalogCollection | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<CampaignCatalogProduct[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateKey>("field");
   const [discountMethod, setDiscountMethod] = useState<DiscountMethod>("code");
   const [discountCode, setDiscountCode] = useState(() => randomDiscountCode());
   const [discountType, setDiscountType] = useState<DiscountType>("percentage");
@@ -1700,94 +1193,59 @@ export default function CampaignsPage() {
   };
   const closeModal = () => { clearTimers(); setStage("closed"); };
 
-  const isAi = method === "ai";
-  const chosenTemplate = CAMPAIGN_TEMPLATES.find((t) => t.key === selectedTemplate) ?? CAMPAIGN_TEMPLATES[0];
-  const rows = isAi ? AI_ROWS : TEMPLATE_ROWS;
-  const phaseTotal = rows.length;
-  const phaseIdx = Math.min(generatingStep, phaseTotal - 1);
-  const phaseColor = PHASE_COLORS[phaseIdx % PHASE_COLORS.length];
-  const hopPct = phaseTotal > 1 ? (phaseIdx / (phaseTotal - 1)) * 100 : 0;
-  const t1 = 1, t2 = Math.ceil(phaseTotal / 2), t3 = phaseTotal - 1;
-  let penSegIdx = 0, penSegFrac = 0;
-  if (generatingStep < t1) { penSegIdx = 0; penSegFrac = t1 > 0 ? generatingStep / t1 : 0; }
-  else if (generatingStep < t2) { penSegIdx = 1; penSegFrac = (generatingStep - t1) / Math.max(1, t2 - t1); }
-  else { penSegIdx = 2; penSegFrac = generatingStep < t3 ? (generatingStep - t2) / Math.max(1, t3 - t2) : 1; }
-  const penX = 14 + Math.min(1, penSegFrac) * (PEN_SEGMENTS[penSegIdx].max / 100 * 186);
-  const penY = PEN_SEGMENTS[penSegIdx].y;
+  // The dashboard's "Create your first campaign" links here with ?create=1.
+  // Open the modal once, then drop the param so a reload doesn't reopen it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const createRequested = searchParams.get("create") === "1";
+  useEffect(() => {
+    if (!createRequested) return;
+    openCreate();
+    setSearchParams((params) => { params.delete("create"); return params; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createRequested]);
+
   const discountSuffix = discountType === "percentage" ? "%" : "USD";
 
   const beginGenerating = () => {
-    if (isAi) {
-      const trimmedPrompt = prompt.trim();
-      if (!trimmedPrompt) { setGenerateError("Write what you want your campaign to be about."); return; }
-      if (feature === "product" && !selectedProduct) { setGenerateError("Pick a product to feature."); return; }
-      if (feature === "collection" && !selectedCollection) { setGenerateError("Pick a collection to feature."); return; }
-      if (feature === "all_products" && selectedProducts.length === 0) { setGenerateError("Pick at least one product to feature."); return; }
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) { setGenerateError("Write what you want your campaign to be about."); return; }
+    if (feature === "product" && !selectedProduct) { setGenerateError("Pick a product to feature."); return; }
+    if (feature === "collection" && !selectedCollection) { setGenerateError("Pick a collection to feature."); return; }
+    if (feature === "all_products" && selectedProducts.length === 0) { setGenerateError("Pick at least one product to feature."); return; }
 
-      setGenerateError(null);
-      clearTimers();
-      setStage("generating");
-      setGeneratingStep(0);
-
-      const hasDates = discountMethod === "code" && startDate && endDate;
-      const payload: GenerateCampaignRequest = {
-        prompt: trimmedPrompt,
-        feature,
-        productIds:
-          feature === "product" && selectedProduct ? [selectedProduct.id]
-          : feature === "all_products" ? selectedProducts.map((product) => product.id)
-          : [],
-        collectionId: feature === "collection" ? selectedCollection?.id ?? null : null,
-        discountMethod,
-        discountCode: discountMethod === "code" ? discountCode : null,
-        discountType,
-        discountValue: discountMethod === "code" ? discountValue : null,
-        startAt: hasDates ? `${startDate}T${startTime}` : null,
-        endAt: hasDates ? `${endDate}T${endTime}` : null,
-      };
-      generateFetcher.submit({ payload: JSON.stringify(payload) }, { method: "post" });
-
-      // Cycle through the phase labels while the real request is in flight,
-      // capped one step short of the end so the animation never "finishes"
-      // before the actual response arrives.
-      const maxLiveStep = Math.max(0, AI_ROWS.length - 2);
-      let step = 0;
-      const interval = window.setInterval(() => {
-        step = Math.min(step + 1, maxLiveStep);
-        setGeneratingStep(step);
-      }, AI_LIVE_STEP_MS);
-      timersRef.current.push(interval as unknown as number);
-      return;
-    }
-
-    // Template method stays a self-contained client-side preview — nothing
-    // is sent to the server or persisted.
+    setGenerateError(null);
     clearTimers();
-    const delays = TEMPLATE_DELAYS;
     setStage("generating");
     setGeneratingStep(0);
 
-    const currencyMark = discountSuffix === "USD" ? "$" : discountSuffix;
-    const title = chosenTemplate.name;
-    const resultSubject = (discountMethod === "code" ? `${discountValue}${currencyMark} Off — ` : "") + title;
-    const resultPreview = `A ${chosenTemplate.name} campaign, ready to send.`;
-    const resultDiscountLine = discountMethod === "code" ? `Discount ${discountValue}${currencyMark} · Code ${discountCode}` : "No discount";
+    const hasDates = discountMethod === "code" && startDate && endDate;
+    const payload: GenerateCampaignRequest = {
+      prompt: trimmedPrompt,
+      feature,
+      productIds:
+        feature === "product" && selectedProduct ? [selectedProduct.id]
+        : feature === "all_products" ? selectedProducts.map((product) => product.id)
+        : [],
+      collectionId: feature === "collection" ? selectedCollection?.id ?? null : null,
+      discountMethod,
+      discountCode: discountMethod === "code" ? discountCode : null,
+      discountType,
+      discountValue: discountMethod === "code" ? discountValue : null,
+      startAt: hasDates ? `${startDate}T${startTime}` : null,
+      endAt: hasDates ? `${endDate}T${endTime}` : null,
+    };
+    generateFetcher.submit({ payload: JSON.stringify(payload) }, { method: "post" });
 
-    let acc = 0;
-    for (let n = 1; n < delays.length; n += 1) {
-      acc += delays[n - 1];
-      const step = n;
-      timersRef.current.push(window.setTimeout(() => setGeneratingStep(step), acc));
-    }
-    acc += delays[delays.length - 1];
-    timersRef.current.push(window.setTimeout(() => {
-      setGeneratingStep(delays.length);
-      setStage("closed");
-      if (total === 0) {
-        setReveal({ id: "", title, subject: resultSubject, preview: resultPreview, discountLine: resultDiscountLine, html: "" });
-        setRevealKey((key) => key + 1);
-      }
-    }, acc + SETTLE_MS));
+    // Cycle through the phase labels while the real request is in flight,
+    // capped one step short of the end so the animation never "finishes"
+    // before the actual response arrives.
+    const maxLiveStep = Math.max(0, AI_ROWS.length - 2);
+    let step = 0;
+    const interval = window.setInterval(() => {
+      step = Math.min(step + 1, maxLiveStep);
+      setGeneratingStep(step);
+    }, AI_LIVE_STEP_MS);
+    timersRef.current.push(interval as unknown as number);
   };
 
   // Finalizes the AI generate flow once the real server response lands.
@@ -1815,7 +1273,6 @@ export default function CampaignsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generateFetcher.state, generateFetcher.data]);
 
-  const generateLabel = isAi ? "Generate" : `Use ${chosenTemplate.name} template`;
   const showRedesignedEmpty = total === 0 && !reveal;
   const showReveal = Boolean(reveal);
 
@@ -1884,8 +1341,8 @@ export default function CampaignsPage() {
               }}
             >
               <div className="nomi-cc-reveal-banner">
-                <span className="nomi-cc-reveal-blob is-a" style={{ background: isAi ? "#0088b0" : chosenTemplate.primary }} />
-                <span className="nomi-cc-reveal-blob is-b" style={{ background: isAi ? "#d6006c" : chosenTemplate.accent }} />
+                <span className="nomi-cc-reveal-blob is-a" style={{ background: "#0088b0" }} />
+                <span className="nomi-cc-reveal-blob is-b" style={{ background: "#d6006c" }} />
                 <span className="nomi-cc-reveal-badge">{reveal.html ? "Click to preview" : "AI banner"}</span>
               </div>
               <div className="nomi-cc-reveal-body">
@@ -1927,15 +1384,7 @@ export default function CampaignsPage() {
           stage={stage}
           onClose={closeModal}
           onGenerate={beginGenerating}
-          rows={rows}
           generatingStep={generatingStep}
-          phaseColor={phaseColor}
-          hopPct={hopPct}
-          penX={penX}
-          penY={penY}
-          method={method}
-          onMethodAi={() => setMethod("ai")}
-          onMethodTemplate={() => setMethod("template")}
           prompt={prompt}
           onPromptChange={setPrompt}
           feature={feature}
@@ -1948,8 +1397,6 @@ export default function CampaignsPage() {
           onSelectedCollectionChange={setSelectedCollection}
           selectedProducts={selectedProducts}
           onSelectedProductsChange={setSelectedProducts}
-          selectedTemplate={selectedTemplate}
-          onSelectTemplate={setSelectedTemplate}
           discountMethod={discountMethod}
           onDiscountCode={() => setDiscountMethod("code")}
           onDiscountNone={() => setDiscountMethod("none")}
@@ -1969,7 +1416,6 @@ export default function CampaignsPage() {
           onEndDateChange={setEndDate}
           endTime={endTime}
           onEndTimeChange={setEndTime}
-          generateLabel={generateLabel}
           generateError={generateError}
         />
       ) : null}

@@ -22,13 +22,17 @@ import {
   analyzeBrandWithSol,
   createDirectionsWithSonnet,
   finalizeWithSonnet,
-  generateCreativeEmailFamilyWithSonnet,
   MeteredAiError,
 } from "../brand-studio/ai.server";
 import { assertStageBudget } from "../brand-studio/budget.server";
+import { checkAllowance, recordUsage } from "../billing/usage.server";
+import {
+  generateLifecycleEmailsWithCampaignEngine,
+  lifecycleLanguageAndTone,
+} from "../brand-studio/campaign-engine.server";
 import { getApprovedBrandStudioFamily } from "../brand-studio/approved-family";
 import { getBrandStudioReviewPage } from "../brand-studio/review-fixture.server";
-import { ColorField, LogoPicker } from "../components/brand-inputs";
+import { ColorField, FontField, LogoPicker } from "../components/brand-inputs";
 import {
   brandEvidenceFingerprint,
   discoverBrandLogo,
@@ -381,9 +385,17 @@ function confirmedEvidence(
     accent: "#d6b3a7",
   };
   const logo = text("logoUrl", 2_000);
-  const fonts = [text("displayFont", 100), text("bodyFont", 100)].filter(
-    Boolean,
-  );
+  // Both typefaces are required: a blank one used to silently keep the old
+  // value, so the merchant thought they had cleared or changed it.
+  const displayFont = text("displayFont", 100);
+  const bodyFont = text("bodyFont", 100);
+  if (!displayFont)
+    throw new Error("Add a display character, like Playfair Display, before continuing.");
+  if (!bodyFont)
+    throw new Error("Add a body character, like Inter, before continuing.");
+  if (!text("shopName", 120))
+    throw new Error("Add your brand name before continuing.");
+  const fonts = [displayFont, bodyFont];
   return brandEvidenceSchema.parse({
     ...evidence,
     shopName: text("shopName", 120) || evidence.shopName,
@@ -391,7 +403,7 @@ function confirmedEvidence(
       ...evidence.assets,
       logoUrl: logo && /^https?:\/\//i.test(logo) ? logo : null,
       observedColors: evidence.assets?.observedColors ?? [],
-      fontHints: fonts.length ? fonts : (evidence.assets?.fontHints ?? []),
+      fontHints: fonts,
       palette: {
         paper: color("paperColor", "Paper", current.paper),
         ink: color("inkColor", "Ink", current.ink),
@@ -646,6 +658,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         savedBrandSystem.success &&
         savedBrandSystem.data.directionId === direction.id &&
         savedRecipes.success;
+      // A new build uses a plan allowance (Free includes one); resuming an
+      // interrupted build doesn't.
+      if (!canResume) {
+        const allowance = await checkAllowance(session.shop, "brand_build");
+        if (!allowance.allowed)
+          throw new Error(allowance.message ?? "Your plan's Brand Studio builds are used up.");
+      }
       const result = canResume
         ? {
             value: {
@@ -689,13 +708,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           },
         });
       }
+      // Every email is built by the campaign engine: its own creative plan,
+      // its own photos, its own designer call (campaign-engine.server.ts).
+      // A resumed build keeps the emails it already finished.
       let checkpointedCostMicros = 0;
-      const creative = await generateCreativeEmailFamilyWithSonnet({
+      const settings = await db.shopSettings.findUnique({ where: { shop: session.shop } });
+      const creative = await generateLifecycleEmailsWithCampaignEngine({
+        admin,
         evidence,
         brandSystem: result.value.brandSystem,
-        direction: buildDirection,
         recipes: result.value.lifecycleRecipes,
-        refinement,
+        ...lifecycleLanguageAndTone(settings),
         existingRendered: canResume
           ? safeJson(profile.renderedEmails, renderedEmailsSchema, {})
           : {},
@@ -799,6 +822,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           data: { onboardingCompletedAt: new Date() },
         }),
       ]);
+      await recordUsage(session.shop, "brand_build");
       await waitForAnimation(actionStartedAt, 8_500);
       return redirect(studioRedirect("complete", replayMode));
     }
@@ -1217,7 +1241,7 @@ function OpeningProgress({
       <div className="nomi-make-progress-budget">
         <span>Generation budget</span>
         <strong>
-          {formatCost(cost)} <small>/ $3.00</small>
+          {formatCost(cost)} <small>spent</small>
         </strong>
       </div>
     </nav>
@@ -1333,22 +1357,18 @@ function SnapshotStep({
           />
         </div>
         <div className="nomi-make-identity-type">
-          <label>
-            Display character
-            <input
-              name="displayFont"
-              defaultValue={fonts[0] ?? "Editorial serif"}
-              maxLength={100}
-            />
-          </label>
-          <label>
-            Body character
-            <input
-              name="bodyFont"
-              defaultValue={fonts[1] ?? fonts[0] ?? "Clear sans serif"}
-              maxLength={100}
-            />
-          </label>
+          <FontField
+            name="displayFont"
+            label="Display character"
+            defaultValue={fonts[0] ?? "Editorial serif"}
+            example="Playfair Display"
+          />
+          <FontField
+            name="bodyFont"
+            label="Body character"
+            defaultValue={fonts[1] ?? fonts[0] ?? "Clear sans serif"}
+            example="Inter"
+          />
         </div>
         <p className="nomi-make-identity-source">
           {evidence.assets?.theme ? (

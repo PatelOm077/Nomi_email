@@ -36,6 +36,7 @@ describe("sendEmail", () => {
     expect(fetch).toHaveBeenCalledOnce();
     expect(fetch).toHaveBeenCalledWith("https://api.resend.com/emails", {
       method: "POST",
+      signal: expect.any(AbortSignal),
       headers: {
         Authorization: "Bearer resend-test-key",
         "Content-Type": "application/json",

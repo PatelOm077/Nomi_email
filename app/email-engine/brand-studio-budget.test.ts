@@ -24,9 +24,9 @@ describe("Brand Studio budget", () => {
   });
 
   it("enforces the hard cap before a stage begins", () => {
-    expect(() => assertStageBudget(2_100_000, 800_000)).not.toThrow();
-    expect(() => assertStageBudget(2_300_000, 800_000)).toThrow(
-      /\$3 generation limit/,
+    expect(() => assertStageBudget(24_100_000, 800_000)).not.toThrow();
+    expect(() => assertStageBudget(24_300_000, 800_000)).toThrow(
+      /\$25\.00 generation limit/,
     );
   });
 

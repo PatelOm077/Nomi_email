@@ -1,4 +1,4 @@
-import { generateEmailHtml } from "./generate-email";
+import { generateEmailHtml, type GenerateEmailOptions } from "./generate-email";
 import { REVIEW_REQUEST_SKELETON_PROMPT } from "./review-request-prompt";
 import type { ReviewRequest } from "./types";
 import { approvedBrandPrompt } from "./brand-identity-prompt";
@@ -33,11 +33,13 @@ Return only the finished HTML document.`;
 
 export async function generateReviewRequestEmail(
   request: ReviewRequest,
+  options?: GenerateEmailOptions,
 ): Promise<string> {
   return generateEmailHtml(
     REVIEW_REQUEST_SKELETON_PROMPT,
     buildReviewMessage(request),
     request.language,
     request.tone,
+    options,
   );
 }

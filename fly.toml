@@ -1,0 +1,44 @@
+# App name selected in the merchant's Fly launch form; availability unverified.
+app = "nomi-email"
+primary_region = "ams"
+kill_signal = "SIGTERM"
+kill_timeout = 120
+
+[[restart]]
+  policy = "always"
+  processes = ["app"]
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  strategy = "immediate"
+
+[env]
+  NODE_ENV = "production"
+  HOST = "0.0.0.0"
+  PORT = "3000"
+  DATABASE_URL = "file:/data/nomi.sqlite"
+
+[[mounts]]
+  source = "nomi_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "60s"
+    interval = "30s"
+    method = "GET"
+    timeout = "10s"
+    path = "/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "1gb"

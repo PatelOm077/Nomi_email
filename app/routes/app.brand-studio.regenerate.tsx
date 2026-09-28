@@ -2,18 +2,22 @@ import type { ActionFunctionArgs } from "react-router";
 import { data } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import {
-  generateCreativeEmailFamilyWithSonnet,
-  MeteredAiError,
-  REGENERATE_COMPOSITION_DIRECTIVES,
-} from "../brand-studio/ai.server";
+import { MeteredAiError } from "../brand-studio/ai.server";
 import { assertStageBudget } from "../brand-studio/budget.server";
+import { checkAllowance, recordUsage } from "../billing/usage.server";
+import { getApprovedBrandStudioFamily } from "../brand-studio/approved-family";
 import {
-  applyEvidencePalette,
-  getApprovedBrandStudioFamily,
-} from "../brand-studio/approved-family";
+  generateLifecycleEmailsWithCampaignEngine,
+  lifecycleLanguageAndTone,
+} from "../brand-studio/campaign-engine.server";
 import { auditCompiledEmail } from "../brand-studio/email-quality";
 import { BRAND_STUDIO_LIFECYCLE_IDS } from "../brand-studio/types";
+import {
+  loadCampaignCollectionProducts,
+  loadCampaignProductsByIds,
+  type CampaignCatalogProduct,
+  type GraphqlAdmin,
+} from "../dashboard/campaign-catalog.server";
 
 // Regenerates exactly one lifecycle email inside an already-approved Brand
 // Studio family, without touching the other 12. Deliberately a separate,
@@ -36,24 +40,14 @@ type RegenerateJobState =
   | { status: "error"; error: string };
 
 const regenerateJobs = new Map<string, RegenerateJobState>();
-const REGENERATE_JOB_STALE_MS = 5 * 60 * 1000;
-// Which composition directive (see REGENERATE_COMPOSITION_DIRECTIVES) most
-// recently regenerated this shop+recipe, keyed the same as regenerateJobs.
-// Consecutive clicks on the same email must land on a different structural
-// axis each time rather than re-rolling the same instruction (and getting
-// back a near-duplicate) or drifting randomly and occasionally repeating.
-// In-memory and process-lifetime only, same durability tradeoff as
-// regenerateJobs above — worst case after a restart is one repeated axis.
-const lastCompositionDirectiveByJobKey = new Map<string, string>();
-function pickCompositionDirective(jobKey: string): string {
-  const previous = lastCompositionDirectiveByJobKey.get(jobKey);
-  const choices = REGENERATE_COMPOSITION_DIRECTIVES.filter(
-    (directive) => directive !== previous,
-  );
-  const pick = choices[Math.floor(Math.random() * choices.length)];
-  lastCompositionDirectiveByJobKey.set(jobKey, pick);
-  return pick;
-}
+// A finished regenerate the merchant hasn't saved yet, keyed like
+// regenerateJobs. Only intent=save writes it into the approved family, so
+// Discard (or just closing) leaves the Flow Editor email untouched.
+// Process-lifetime only: a restart drops unsaved drafts, and Save then asks
+// the merchant to regenerate again.
+const regenerateDrafts = new Map<string, { html: string; createdAt: number }>();
+const REGENERATE_DRAFT_TTL_MS = 60 * 60 * 1000;
+const REGENERATE_JOB_STALE_MS = 10 * 60 * 1000;
 // Lets tests await the fire-and-forget background job instead of racing it.
 // Not used by any production code path.
 const inFlightRegenerateJobs = new Map<string, Promise<void>>();
@@ -64,10 +58,91 @@ export async function __waitForRegenerateJobsForTests() {
 type RegenerateActionResult =
   | { ok: true; recipeId: string; status: "pending" }
   | { ok: true; recipeId: string; status: "done"; html: string }
+  | { ok: true; recipeId: string; status: "saved"; html: string }
+  | { ok: true; recipeId: string; status: "discarded" }
   | { ok: false; recipeId: string | null; status: "error"; error: string };
 
+// What the merchant asked for in the Flow Editor regenerate modal. All
+// optional: an empty modal regenerates exactly as before.
+type RegenerateBrief = {
+  products: CampaignCatalogProduct[];
+  direction: string | null;
+};
+
+function formText(formData: FormData, name: string, max: number): string | null {
+  const value = formData.get(name);
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null;
+}
+
+function isoDay(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+}
+
+async function readRegenerateBrief(
+  formData: FormData,
+  admin: GraphqlAdmin,
+): Promise<RegenerateBrief> {
+  const prompt = formText(formData, "prompt", 600);
+  const feature = formText(formData, "feature", 20);
+  const productIds = (formText(formData, "productIds", 400) ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.startsWith("gid://shopify/Product/"))
+    .slice(0, 3);
+  const collectionId = formText(formData, "collectionId", 120);
+
+  let products: CampaignCatalogProduct[] = [];
+  let collectionTitle: string | null = null;
+  if (feature === "collection" && collectionId) {
+    const collection = await loadCampaignCollectionProducts(admin, collectionId);
+    collectionTitle = collection?.title ?? null;
+    products = collection?.products ?? [];
+  } else if (productIds.length) {
+    products = await loadCampaignProductsByIds(admin, productIds);
+  }
+
+  const code = formText(formData, "discountCode", 40);
+  const value = formText(formData, "discountValue", 20);
+  const percentage = formText(formData, "discountType", 20) !== "fixed";
+  const startDay = isoDay(formText(formData, "startAt", 40));
+  const endDay = isoDay(formText(formData, "endAt", 40));
+
+  const lines: string[] = [];
+  if (prompt) lines.push(`What the merchant wants this email to do: ${prompt}`);
+  if (products.length) {
+    const titles = products.map(({ title }) => `"${title}"`).join(", ");
+    lines.push(
+      collectionTitle
+        ? `Feature the "${collectionTitle}" collection through its real products: ${titles}.`
+        : `Feature these real products: ${titles}.`,
+    );
+  }
+  if (formText(formData, "discountMethod", 10) === "code" && code && value) {
+    const amount = percentage ? `${value}%` : `${value} (store currency)`;
+    const window = startDay && endDay ? ` Valid ${startDay} through ${endDay}.` : "";
+    lines.push(`Real discount to show: code "${code}" for ${amount} off.${window}`);
+  }
+  return { products, direction: lines.length ? lines.join("\n") : null };
+}
+
+function toEvidenceProduct(product: CampaignCatalogProduct) {
+  return {
+    id: product.id,
+    title: product.title,
+    description: product.description ?? "",
+    productType: product.productType ?? "",
+    vendor: "",
+    tags: [],
+    imageUrl: product.imageUrl,
+    productUrl: product.productUrl,
+    price: product.price || null,
+  };
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
 
   const recipeIdValue = formData.get("recipeId");
@@ -86,6 +161,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   const recipeId = recipeIdValue as (typeof BRAND_STUDIO_LIFECYCLE_IDS)[number];
   const jobKey = `${session.shop}:${recipeId}`;
+
+  const intent = formData.get("intent");
+  if (intent === "discard") {
+    regenerateDrafts.delete(jobKey);
+    return data<RegenerateActionResult>({ ok: true, recipeId, status: "discarded" });
+  }
+  if (intent === "save") return saveDraft(session.shop, recipeId, jobKey);
 
   const existingJob = regenerateJobs.get(jobKey);
   if (existingJob) {
@@ -128,11 +210,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
-  const refinementValue = formData.get("refinement");
-  const refinement =
-    typeof refinementValue === "string" && refinementValue.trim()
-      ? refinementValue.trim().slice(0, 400)
-      : null;
+  let brief: RegenerateBrief;
+  try {
+    brief = await readRegenerateBrief(formData, admin);
+  } catch {
+    return data<RegenerateActionResult>(
+      {
+        ok: false,
+        recipeId,
+        status: "error",
+        error: "Nomi could not load the products you picked. Try again.",
+      },
+      { status: 400 },
+    );
+  }
 
   const profile = await db.brandStudioProfile.findUnique({
     where: { shop: session.shop },
@@ -167,12 +258,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
+  const allowance = await checkAllowance(session.shop, "email_regenerate");
+  if (!allowance.allowed)
+    return data<RegenerateActionResult>(
+      { ok: false, recipeId, status: "error", error: allowance.message ?? "Your plan's regenerates are used up." },
+      { status: 400 },
+    );
+
   regenerateJobs.set(jobKey, { status: "pending", startedAt: Date.now() });
   const jobPromise = runRegenerateJob({
     shop: session.shop,
     recipeId,
-    refinement,
-    profile: profile!,
+    admin,
+    brief,
     approved,
     jobKey,
   }).finally(() => inFlightRegenerateJobs.delete(jobKey));
@@ -182,37 +280,91 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return data<RegenerateActionResult>({ ok: true, recipeId, status: "pending" });
 };
 
+async function saveDraft(
+  shop: string,
+  recipeId: (typeof BRAND_STUDIO_LIFECYCLE_IDS)[number],
+  jobKey: string,
+) {
+  const draft = regenerateDrafts.get(jobKey);
+  if (!draft || Date.now() - draft.createdAt > REGENERATE_DRAFT_TTL_MS) {
+    regenerateDrafts.delete(jobKey);
+    return data<RegenerateActionResult>(
+      {
+        ok: false,
+        recipeId,
+        status: "error",
+        error: "This new version expired before it was saved. Regenerate it again.",
+      },
+      { status: 400 },
+    );
+  }
+  // Re-read the family so a save never overwrites edits made to the other
+  // 12 emails while this one was generating.
+  const profile = await db.brandStudioProfile.findUnique({ where: { shop } });
+  const approved = getApprovedBrandStudioFamily(profile);
+  if (!approved)
+    return data<RegenerateActionResult>(
+      {
+        ok: false,
+        recipeId,
+        status: "error",
+        error: "Your email family changed in Brand Studio. Regenerate this email again.",
+      },
+      { status: 400 },
+    );
+  await db.brandStudioProfile.update({
+    where: { shop },
+    data: {
+      renderedEmails: JSON.stringify({
+        ...approved.renderedEmails,
+        [recipeId]: draft.html,
+      }),
+    },
+  });
+  regenerateDrafts.delete(jobKey);
+  return data<RegenerateActionResult>({ ok: true, recipeId, status: "saved", html: draft.html });
+}
+
 async function runRegenerateJob(input: {
   shop: string;
   recipeId: (typeof BRAND_STUDIO_LIFECYCLE_IDS)[number];
-  refinement: string | null;
-  profile: NonNullable<
-    Awaited<ReturnType<typeof db.brandStudioProfile.findUnique>>
-  >;
+  admin: GraphqlAdmin;
+  brief: RegenerateBrief;
   approved: NonNullable<ReturnType<typeof getApprovedBrandStudioFamily>>;
   jobKey: string;
 }) {
-  const { shop, recipeId, refinement, profile, approved, jobKey } = input;
+  const { shop, recipeId, admin, brief, approved, jobKey } = input;
   try {
-    const buildDirection = applyEvidencePalette(
-      approved.direction,
-      approved.evidence,
-    );
-    // Pass the full rendered map (including the target's current HTML, kept
-    // as "previousHtml" context for the variation instruction) and let
-    // regenerateOnlyId scope generation to exactly this recipe. Every
-    // sibling — regardless of whether it would still pass today's safety
-    // checks — is trusted verbatim and never sent back to Claude.
-    const creative = await generateCreativeEmailFamilyWithSonnet({
-      evidence: approved.evidence,
+    // The merchant's picked products join the evidence for this one call, so
+    // their real photos and product pages pass validation, and become the
+    // target recipe's required products. Stored evidence is untouched.
+    const featuredIds = brief.products.map(({ id }) => id);
+    const evidence = featuredIds.length
+      ? {
+          ...approved.evidence,
+          products: [
+            ...brief.products.map(toEvidenceProduct),
+            ...approved.evidence.products.filter(({ id }) => !featuredIds.includes(id)),
+          ],
+        }
+      : approved.evidence;
+    const recipes = featuredIds.length
+      ? approved.recipes.map((recipe) =>
+          recipe.id === recipeId ? { ...recipe, productIds: featuredIds } : recipe,
+        )
+      : approved.recipes;
+    // Built by the campaign engine like every Brand Studio email; siblings
+    // come back exactly as stored.
+    const settings = await db.shopSettings.findUnique({ where: { shop } });
+    const creative = await generateLifecycleEmailsWithCampaignEngine({
+      admin,
+      evidence,
       brandSystem: approved.brandSystem,
-      direction: buildDirection,
-      recipes: approved.recipes,
-      refinement,
+      recipes,
+      ...lifecycleLanguageAndTone(settings),
       existingRendered: approved.renderedEmails,
-      skipCritique: true,
-      regenerateOnlyId: recipeId,
-      regenerateCompositionDirective: pickCompositionDirective(jobKey),
+      onlyId: recipeId,
+      ...(brief.direction ? { merchantDirection: brief.direction } : {}),
     });
 
     const changedKeys = Object.keys(creative.value).filter(
@@ -243,12 +395,12 @@ async function runRegenerateJob(input: {
     // regenerate over an untouched sibling's pre-existing issues, which is
     // exactly the "rebuild everything" behavior a single-email regenerate
     // exists to avoid.
-    const targetRecipe = approved.recipes.find(({ id }) => id === recipeId)!;
+    const targetRecipe = recipes.find(({ id }) => id === recipeId)!;
     const targetQuality = auditCompiledEmail({
       html: creative.value[recipeId],
       recipe: targetRecipe,
       brandSystem: approved.brandSystem,
-      products: approved.evidence.products,
+      products: evidence.products,
       storefrontUrl: approved.evidence.storefrontUrl,
     });
     const targetIssues = targetQuality.issues.filter(
@@ -263,13 +415,11 @@ async function runRegenerateJob(input: {
       return;
     }
 
+    // The spend is recorded now; the email itself waits as a draft until the
+    // merchant presses Save in the Flow Editor (intent=save below).
     await db.brandStudioProfile.update({
       where: { shop },
       data: {
-        renderedEmails: JSON.stringify({
-          ...approved.renderedEmails,
-          [recipeId]: creative.value[recipeId],
-        }),
         anthropicInputTokens: { increment: creative.usage.inputTokens },
         anthropicOutputTokens: { increment: creative.usage.outputTokens },
         estimatedCostMicros: { increment: creative.costMicros },
@@ -277,6 +427,12 @@ async function runRegenerateJob(input: {
       },
     });
 
+    // A finished version uses up one regenerate whether or not it's saved.
+    await recordUsage(shop, "email_regenerate");
+    regenerateDrafts.set(jobKey, {
+      html: creative.value[recipeId],
+      createdAt: Date.now(),
+    });
     regenerateJobs.set(jobKey, {
       status: "done",
       html: creative.value[recipeId],

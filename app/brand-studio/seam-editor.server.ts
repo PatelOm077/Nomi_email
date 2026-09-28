@@ -8,12 +8,20 @@ import { parse, type HTMLElement } from "node-html-parser";
 // text/image content one seam names.
 
 export const TEXT_SEAM_IDS = ["eyebrow", "headline", "body", "cta-label", "footer"] as const;
-export type TextSeamId = (typeof TEXT_SEAM_IDS)[number];
+export type FixedTextSeamId = (typeof TEXT_SEAM_IDS)[number];
 
-// `url` is only ever populated for "cta-label" — the destination of the
-// nearest enclosing <a>, read straight off the live HTML rather than a
-// separate marker, so link-editing works even on emails generated before
-// this field existed (see applyTextSeamEdit).
+// Repeatable seams, keyed by document order like `image:N`: every other
+// piece of editable copy (`data-nomi-seam="text"`: section headings,
+// callouts, steps, benefits, card copy, closing lines) and every button
+// beyond the primary CTA (`data-nomi-seam="button"`, on its label text).
+const REPEATABLE_TEXT_KINDS = ["text", "button"] as const;
+type RepeatableTextKind = (typeof REPEATABLE_TEXT_KINDS)[number];
+export type TextSeamId = FixedTextSeamId | `${RepeatableTextKind}:${number}`;
+
+// `url` is only ever populated for button seams ("cta-label" and
+// `button:N`) — the destination of the nearest enclosing <a>, read straight
+// off the live HTML rather than a separate marker, so link-editing works
+// even on emails generated before this field existed (see applyTextSeamEdit).
 export type TextSeam = { id: TextSeamId; kind: "text"; text: string; url?: string };
 export type ImageSeam = {
   id: string; // "logo" | `image:${number}` | `product:${productId}`
@@ -37,7 +45,19 @@ function parseIntOrNull(value: string | null | undefined) {
 }
 
 function isTextSeamId(value: string): value is TextSeamId {
-  return (TEXT_SEAM_IDS as readonly string[]).includes(value);
+  if ((TEXT_SEAM_IDS as readonly string[]).includes(value)) return true;
+  return /^(text|button):\d+$/.test(value);
+}
+
+/** Seams whose edit panel also offers the destination URL. */
+export function isButtonSeamId(value: string): boolean {
+  return value === "cta-label" || value.startsWith("button:");
+}
+
+function locateTextSeamElement(doc: HTMLElement, seamId: TextSeamId): HTMLElement | null {
+  const match = /^(text|button):(\d+)$/.exec(seamId);
+  if (!match) return doc.querySelector(`[data-nomi-seam="${seamId}"]`);
+  return doc.querySelectorAll(`[data-nomi-seam="${match[1]}"]`)[Number(match[2])] ?? null;
 }
 
 /** Returns every seam a stored email currently exposes, in document order. */
@@ -54,6 +74,12 @@ export function findSeams(html: string): Seam[] {
     } else {
       seams.push({ id, kind: "text", text: el.text.trim() });
     }
+  }
+  for (const kind of REPEATABLE_TEXT_KINDS) {
+    doc.querySelectorAll(`[data-nomi-seam="${kind}"]`).forEach((el, index) => {
+      const url = kind === "button" ? el.closest("a")?.getAttribute("href") || undefined : undefined;
+      seams.push({ id: `${kind}:${index}`, kind: "text", text: el.text.trim(), url });
+    });
   }
 
   let genericImageIndex = 0;
@@ -98,6 +124,11 @@ export function annotateSeamKeys(html: string): string {
   for (const id of TEXT_SEAM_IDS) {
     doc.querySelector(`[data-nomi-seam="${id}"]`)?.setAttribute("data-nomi-seam-key", id);
   }
+  for (const kind of REPEATABLE_TEXT_KINDS) {
+    doc.querySelectorAll(`[data-nomi-seam="${kind}"]`).forEach((el, index) =>
+      el.setAttribute("data-nomi-seam-key", `${kind}:${index}`),
+    );
+  }
 
   let genericImageIndex = 0;
   for (const el of doc.querySelectorAll("img[data-nomi-seam]")) {
@@ -140,7 +171,8 @@ function locateImageSeamElements(doc: HTMLElement, seamId: string): HTMLElement[
 
 /**
  * Replaces one text seam's content in place. Input is always HTML-escaped.
- * For "cta-label", an optional `href` also updates the destination of the
+ * For a button seam ("cta-label" or `button:N`), an optional `href` also
+ * updates the destination of the
  * nearest enclosing <a> — whether the seam marker sits on the <a> itself or
  * on an inner label span, `closest("a")` finds it either way, so this works
  * on emails generated before eyebrow/footer seams existed too.
@@ -152,10 +184,10 @@ export function applyTextSeamEdit(
   href?: string,
 ): string {
   const doc = parse(html);
-  const el = doc.querySelector(`[data-nomi-seam="${seamId}"]`);
+  const el = locateTextSeamElement(doc, seamId);
   if (!el) throw new Error(`This email has no "${seamId}" seam to edit.`);
   el.textContent = text;
-  if (seamId === "cta-label" && href) {
+  if (isButtonSeamId(seamId) && href) {
     const anchor = el.closest("a");
     if (anchor) anchor.setAttribute("href", escapeAttr(href));
   }

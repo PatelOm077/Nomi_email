@@ -15,12 +15,12 @@ green. Test only with a development store and controlled recipient inboxes.
 The local Prisma default is SQLite at `prisma/dev.sqlite`. Production is safe
 only with one application instance and a database file on persistent storage.
 
-### Chosen host: Render
+### Chosen host: Fly.io
 
-`render.yaml` defines one paid Render web service and a persistent disk mounted
-at `/var/data`. It sets `DATABASE_URL=file:/var/data/nomi.sqlite`. Supply every
-`sync: false` value only through Render's secret form, and keep the service at
-one instance while SQLite is in use.
+`fly.toml` defines one shared-CPU Machine and an encrypted persistent volume
+mounted at `/data`, with `DATABASE_URL=file:/data/nomi.sqlite`. Supply credentials
+through Fly secrets and keep one instance while SQLite is in use. Fly's restart
+policy is `always`; autostop is disabled. See `docs/fly-deployment.md`.
 
 1. Provision the persistent volume.
 2. Confirm the production database resolves onto that volume.

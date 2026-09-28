@@ -2,19 +2,19 @@ import type { ActionFunctionArgs } from "react-router";
 import { data } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { MeteredAiError } from "../brand-studio/ai.server";
+import { getApprovedBrandStudioFamily } from "../brand-studio/approved-family";
 import {
-  generateCreativeEmailFamilyWithSonnet,
-  MeteredAiError,
-} from "../brand-studio/ai.server";
-import {
-  applyEvidencePalette,
-  getApprovedBrandStudioFamily,
-} from "../brand-studio/approved-family";
+  generateLifecycleEmailsWithCampaignEngine,
+  lifecycleLanguageAndTone,
+} from "../brand-studio/campaign-engine.server";
 import {
   auditCompiledEmail,
   auditEmailFamily,
 } from "../brand-studio/email-quality";
 import { LIFECYCLE_FLOWS } from "../dashboard/lifecycle-flow-catalog";
+import type { GraphqlAdmin } from "../dashboard/campaign-catalog.server";
+import { checkAllowance, recordUsage } from "../billing/usage.server";
 
 type RegenerateAllJobState =
   | {
@@ -68,7 +68,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { status: 405 },
     );
 
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const jobKey = session.shop;
   const existingJob = regenerateAllJobs.get(jobKey);
   if (existingJob) {
@@ -116,6 +116,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { status: 400 },
     );
 
+  const allowance = await checkAllowance(session.shop, "regenerate_all");
+  if (!allowance.allowed)
+    return data<RegenerateAllActionResult>(
+      { ok: false, status: "error", error: allowance.message ?? "Your plan's Regenerate alls are used up." },
+      { status: 400 },
+    );
+
   const pending: Extract<RegenerateAllJobState, { status: "pending" }> = {
     status: "pending",
     startedAt: Date.now(),
@@ -125,6 +132,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   regenerateAllJobs.set(jobKey, pending);
   const jobPromise = runRegenerateAllJob({
     shop: session.shop,
+    admin,
     profile: profile!,
     approved,
     jobKey,
@@ -137,23 +145,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 async function runRegenerateAllJob(input: {
   shop: string;
+  admin: GraphqlAdmin;
   profile: NonNullable<
     Awaited<ReturnType<typeof db.brandStudioProfile.findUnique>>
   >;
   approved: NonNullable<ReturnType<typeof getApprovedBrandStudioFamily>>;
   jobKey: string;
 }) {
-  const { shop, profile, approved, jobKey } = input;
+  const { shop, admin, profile, approved, jobKey } = input;
   let checkpointedCostMicros = 0;
   try {
-    const creative = await generateCreativeEmailFamilyWithSonnet({
+    // Every email is rebuilt from scratch by the campaign engine (its own
+    // plan, photos, and designer call). The current family stays live until
+    // all 13 new ones pass the quality gate below.
+    const settings = await db.shopSettings.findUnique({ where: { shop } });
+    const creative = await generateLifecycleEmailsWithCampaignEngine({
+      admin,
       evidence: approved.evidence,
       brandSystem: approved.brandSystem,
-      direction: applyEvidencePalette(approved.direction, approved.evidence),
       recipes: approved.recipes,
-      refinement: profile.refinement,
-      existingRendered: approved.renderedEmails,
-      regenerateAll: true,
+      ...lifecycleLanguageAndTone(settings),
       onCheckpoint: async (checkpoint) => {
         checkpointedCostMicros += checkpoint.costMicros;
         const current = regenerateAllJobs.get(jobKey);
@@ -245,6 +256,7 @@ async function runRegenerateAllJob(input: {
         completedAt: new Date(),
       },
     });
+    await recordUsage(shop, "regenerate_all");
 
     regenerateAllJobs.set(jobKey, {
       status: "done",

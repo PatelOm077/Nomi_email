@@ -47,7 +47,7 @@ describe("Brand Studio lifecycle HTML boundary", () => {
   });
 
   it("connects generation, persistence, previews, and delivery to Brand Studio", () => {
-    expect(brandStudioRoute).toContain("generateCreativeEmailFamilyWithSonnet");
+    expect(brandStudioRoute).toContain("generateLifecycleEmailsWithCampaignEngine");
     expect(brandStudioRoute).toContain("renderedEmails: JSON.stringify(creative.value)");
     expect(brandStudioRoute).toContain('status: "complete"');
     expect(dashboardRoute).toContain("getApprovedBrandStudioFamily");

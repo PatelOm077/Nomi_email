@@ -5,8 +5,12 @@ const processPendingEmailJobs = vi.hoisted(() => vi.fn());
 
 const refreshStaleSendingDomains = vi.hoisted(() => vi.fn(async () => ({ refreshed: 1 })));
 
+const processSupportNotifications = vi.hoisted(() => vi.fn(async () => ({ sent: 1, configured: true })));
+
 vi.mock("./process-jobs.server", () => ({ processPendingEmailJobs }));
 vi.mock("./domains.server", () => ({ refreshStaleSendingDomains }));
+vi.mock("./backup.server", () => ({ backupProductionDatabase: vi.fn(async () => undefined) }));
+vi.mock("../support/notifications.server", () => ({ processSupportNotifications }));
 
 function workerRequest(authorization?: string) {
   const headers = new Headers();
@@ -72,8 +76,10 @@ describe("tasks.email-jobs action", () => {
       retried: 0,
       failed: 0,
       domains: { refreshed: 1 },
+      support: { sent: 1, configured: true },
     });
     expect(processPendingEmailJobs).toHaveBeenCalledOnce();
     expect(refreshStaleSendingDomains).toHaveBeenCalledOnce();
+    expect(processSupportNotifications).toHaveBeenCalledOnce();
   });
 });
