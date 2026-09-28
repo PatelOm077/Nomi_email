@@ -8,6 +8,8 @@ export const LEGAL_CONTACT = "ombarvaliya7@gmail.com";
 const css = `
 .nomi-legal{min-height:100vh;background:#f3f2f2;color:#201e1d;font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:56px 16px 80px}
 .nomi-legal main{max-width:720px;margin:0 auto}
+.nomi-legal .lockup{display:inline-flex;align-items:center;gap:10px;margin:0 0 40px;color:#201e1d;text-decoration:none;font:700 24px/1 "Source Serif 4",Georgia,serif;letter-spacing:-.015em}
+.nomi-legal .lockup img{display:block;border-radius:8px}
 .nomi-legal .kicker{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#6b6765;margin:0 0 12px}
 .nomi-legal h1{font-family:"Source Serif 4",Georgia,serif;font-weight:500;font-size:clamp(34px,6vw,48px);line-height:1.1;margin:0 0 12px}
 .nomi-legal .lede{font-size:18px;color:#48443f;margin:0 0 8px}
@@ -35,7 +37,7 @@ export function legalMeta(title: string, description: string) {
 export const legalLinks = () => [
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;500;600&display=swap",
+    href: "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;500;600;700&display=swap",
   },
 ];
 
@@ -54,6 +56,10 @@ export function LegalPage({
     <div className="nomi-legal">
       <style dangerouslySetInnerHTML={{ __html: css }} />
       <main>
+        <a href="/privacy" className="lockup" aria-label="Nomi">
+          <img src="/nomi-mark.svg" alt="" width="36" height="36" />
+          <span>Nomi</span>
+        </a>
         <p className="kicker">{kicker}</p>
         <h1>{title}</h1>
         <p className="lede">{lede}</p>

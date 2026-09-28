@@ -113,9 +113,9 @@
 .nomi-support-lockup {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 10px;
   font:
-    600 25px/1 "Source Serif 4",
+    700 24px/1 "Source Serif 4",
     Georgia,
     serif;
 }

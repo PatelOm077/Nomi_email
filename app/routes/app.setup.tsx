@@ -178,7 +178,7 @@ export default function Setup() {
     >
       <style>{SETUP_CSS}</style>
       <div style={{ maxWidth: 1240, margin: "0 auto 28px", display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ width: 40, height: 40, background: INK, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+        <span style={{ width: 40, height: 40, background: INK, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
           <NomiGlyph size={22} />
         </span>
         <span style={{ font: `600 22px/1 ${SERIF}`, letterSpacing: "-0.02em" }}>Nomi</span>
@@ -378,7 +378,7 @@ function SetupExample({ sectionRef, flag, showMe }: { sectionRef: Ref<HTMLElemen
               </div>
             </div>
             <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, padding: "16px 18px", borderBottom: `1px solid ${N200}` }}>
-              <span style={{ width: 28, height: 28, borderRadius: 4, background: INK, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+              <span style={{ width: 28, height: 28, borderRadius: 6, background: INK, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
                 <NomiGlyph size={15} />
               </span>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
@@ -452,7 +452,7 @@ function Callout({ number, label, accent = false }: { number: number; label: str
 
 function NomiGlyph({ size }: { size: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" stroke={PAPER} strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="10 10 44 44" fill="none" stroke="#ffffff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M50 16 L14 30 L29 36 L50 16 Z" />
       <path d="M29 36 L33 50 L50 16" />
     </svg>

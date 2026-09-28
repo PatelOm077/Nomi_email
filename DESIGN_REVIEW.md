@@ -2458,3 +2458,7 @@ with Back / Next / Finish replay and clickable step tabs.
 - Brand Studio no longer shows the AI generation cost to merchants (checked live, `screenshots/listing/raw-brand-studio.png`).
 - Flow Editor "Talk to support" now opens the Nomi help chat on the team form instead of a mailto to a non-existent address. Deployed and tested, not yet clicked in Chrome (Chrome was closed).
 - App Store listing images: 1600×900 feature image and five screenshots plus a 1200×1200 icon, built on the design canvas from live captures, in `screenshots/listing/final/`.
+
+## 2026-09-29 — Nomi logo matches the brand sheet (live on Fly)
+- `public/nomi-mark.svg` is now the brand logo tile (ink rounded square, thin white paper plane) and every "Nomi" wordmark is bold Source Serif 4: dashboard header, Brand Studio header, help chat header, setup screen tiles, and the privacy/terms pages. Favicon and `public/nomi-app-icon.svg`/`.png` regenerated from the 1200px App Store icon.
+- Checked live in Chrome: dashboard desktop and 375 mobile, help chat open, Brand Studio header, privacy page. Screenshots: `screenshots/logo-dashboard-help-desktop.png`, `logo-dashboard-mobile.png`, `logo-brand-studio-header.png`.
