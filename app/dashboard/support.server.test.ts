@@ -226,7 +226,7 @@ describe("email outbox", () => {
     const conversation = await client.supportConversation.findUniqueOrThrow({ where: { shop: "a.myshopify.com" } });
     await client.supportNotification.updateMany({ data: { status: "sent" } });
     await client.supportNotification.create({
-      data: { conversationId: conversation.id, requestId: randomUUID(), recipient: "merchant@example.com", body: "Try <b>this</b>" },
+      data: { conversationId: conversation.id, requestId: randomUUID(), recipient: "merchant@example.com", body: "Try <b>this</b>", availableAt: new Date(0) },
     });
     const send = vi.fn().mockResolvedValue("provider-id");
     await processSupportNotifications(client, send);

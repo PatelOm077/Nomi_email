@@ -16,12 +16,11 @@ const shopify = shopifyApp({
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
-  // Matches the Custom distribution set in the Partner Dashboard: an
-  // OAuth-based CLI app restricted to one store (client_id/secret, real
-  // install flow). NOT AppDistribution.ShopifyAdmin — that value means a
-  // classic native custom app with a single static admin token and no
-  // OAuth at all, which this app isn't.
-  distribution: AppDistribution.SingleMerchant,
+  // Matches the Public distribution of "Nomi Email Marketing"
+  // (shopify.app.public.toml) set in the Partner Dashboard. The earlier
+  // custom "Nomi" app used SingleMerchant. NOT AppDistribution.ShopifyAdmin
+  // — that means a native custom app with a static token and no OAuth.
+  distribution: AppDistribution.AppStore,
   hooks: {
     afterAuth: async ({ session }) => {
       await prisma.shopSettings.upsert({
