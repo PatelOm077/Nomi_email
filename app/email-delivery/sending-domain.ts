@@ -201,7 +201,7 @@ export function buildDomainView(input: {
   if (check === "missing")
     notice = {
       title: "A record went missing",
-      body: "This domain was verified, but a record is no longer found. Campaign sending is paused until it’s back.",
+      body: "This domain was verified, but a record is no longer found. Emails send from Nomi’s address until it’s back.",
       tone: "bad",
     };
   if (check === "failed")
@@ -233,7 +233,7 @@ export function buildDomainView(input: {
   };
 }
 
-// A shop may send campaigns only from a verified domain.
+// Only a verified domain is used as the From address (from-header.ts).
 export function isSendingDomainReady(status: string | null | undefined): boolean {
   return status === "verified";
 }

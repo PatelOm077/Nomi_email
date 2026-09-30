@@ -1042,8 +1042,8 @@ function CampaignSubjectPreviewDialog({
   );
 }
 
-// Campaign sending is gated on the shop's own verified domain
-// (SENDING_DOMAIN.md). Styled to match the merchant-approved reference
+// A verified domain becomes the From address (email-delivery/from-header.ts)
+// and lifts the unverified campaign cap (SENDING_DOMAIN.md). Styled to match the merchant-approved reference
 // banner (light-blue header strip, white body, outlined button). Every
 // size is inline — see CAMPAIGNS.md on classes in the embedded iframe.
 const DOMAIN_BANNER_DISMISS_KEY = "nomi:sending-domain-banner-dismissed";
@@ -1089,12 +1089,12 @@ function SendingDomainNotice({ sendingDomain }: { sendingDomain: { domain: strin
   };
 
   const copy = !sendingDomain
-    ? { title: "Set up custom domain to start sending email campaigns", body: "Custom domain is required for sending email campaigns, and for improved deliverability.", cta: "Setup Domain" }
+    ? { title: "Send from your own domain", body: `Verify your domain so your emails come from hello@yourstore.com instead of Nomi’s address. Without one you can create ${UNVERIFIED_CAMPAIGN_LIMIT} campaigns.`, cta: "Setup Domain" }
     : sendingDomain.status === "temporary_failure"
-      ? { title: `A DNS record for ${sendingDomain.domain} went missing`, body: "Campaign sending is paused until every record is back at your domain provider.", cta: "Fix Records" }
+      ? { title: `A DNS record for ${sendingDomain.domain} went missing`, body: "Emails send from Nomi’s address until every record is back at your domain provider.", cta: "Fix Records" }
       : sendingDomain.status === "failed"
         ? { title: `Verification stopped for ${sendingDomain.domain}`, body: "The DNS records weren’t found after 72 hours. Add them, then restart verification.", cta: "Restart Setup" }
-        : { title: `Finish verifying ${sendingDomain.domain} to start sending email campaigns`, body: "Add the DNS records at your domain provider, then verify them in Nomi.", cta: "Continue Setup" };
+        : { title: `Finish verifying ${sendingDomain.domain}`, body: "Add the DNS records at your domain provider, then verify them in Nomi. Until then emails send from Nomi’s address.", cta: "Continue Setup" };
 
   return (
     <section

@@ -348,8 +348,8 @@ export default function SendingDomainPage() {
             <div className="col">
               <section className="card pad" aria-labelledby="entry-title">
                 <div className="eyebrow">Step 1 · Your domain</div>
-                <h2 id="entry-title">Send campaigns from your own domain</h2>
-                <p className="lede">Campaigns go out from an address like <b>hello@{replaying ? current?.domain : shown}</b>. Inbox providers check that mail really comes from the domain it names, so a verified domain is what gets your campaigns to the inbox.</p>
+                <h2 id="entry-title">Send from your own domain</h2>
+                <p className="lede">Once verified, your flow emails go out from <b>hello@{replaying ? current?.domain : shown}</b>. Until then they send from Nomi&rsquo;s address under your store&rsquo;s name. Inbox providers check that mail really comes from the domain it names, so a verified domain helps your emails reach the inbox.</p>
                 <form className={`field${fieldError ? " bad" : ""}`} onSubmit={(e) => { e.preventDefault(); onContinue(); }} noValidate>
                   <label htmlFor="domain-input">Your domain</label>
                   <input
@@ -411,7 +411,7 @@ export default function SendingDomainPage() {
                 <div className="okmark">{Icon.check(28, 2)}</div>
                 <div className="eyebrow">Step 3 · Verified</div>
                 <h2 id="ver-title" style={{ wordBreak: "break-word" }}>{current.domain} is verified</h2>
-                <p className="lede">Inbox providers can now confirm your campaigns really come from you.</p>
+                <p className="lede">Your emails now send from this domain, and inbox providers can confirm they really come from you.</p>
                 <dl className="metagrid">
                   <div><dt>Domain</dt><dd>{current.domain}</dd></div>
                   <div><dt>Status</dt><dd><Pill tone="ok">Verified</Pill></dd></div>
@@ -429,7 +429,7 @@ export default function SendingDomainPage() {
                     <p style={{ margin: "14px 0 0", fontSize: 14, lineHeight: 1.5 }}>
                       Business address: {footer.line}
                       <br />
-                      <span style={{ color: "#bdb8b4" }}>Marketing emails must show a postal address. Nomi will add this one to your campaign footers. {footer.source === "shopify" ? "From your Shopify store details." : "From Nomi Sender info."}</span>{" "}
+                      <span style={{ color: "#bdb8b4" }}>Marketing emails must show a postal address. Nomi adds this one to every email&rsquo;s footer. {footer.source === "shopify" ? "From your Shopify store details." : "From Nomi Sender info."}</span>{" "}
                       <Link to={SENDER_INFO_PATH} style={{ color: "#99e0ff", textDecoration: "underline", textUnderlineOffset: 3, display: "inline-block", minHeight: 24 }}>Edit</Link>
                     </p>
                   </div>
@@ -465,8 +465,8 @@ export default function SendingDomainPage() {
             </div>
             <aside className="aside" aria-label="What happens now">
               <h4>What happens now</h4>
-              <div className="tip"><b>01</b><div><strong>Leave the records in place</strong><p>Removing them later stops campaigns from sending. Nomi pauses sends and flags it here if that happens.</p></div></div>
-              <div className="tip"><b>02</b><div><strong>Same domain, any address</strong><p>hello@, news@, team@ — every address on {current.domain} is covered.</p></div></div>
+              <div className="tip"><b>01</b><div><strong>Leave the records in place</strong><p>If a record goes missing, Nomi goes back to sending from its own address and flags it here.</p></div></div>
+              <div className="tip"><b>02</b><div><strong>Replies go to hello@{current.domain}</strong><p>Set up that inbox, or a forward to one you read, at your email provider.</p></div></div>
               <div className="tip"><b>03</b><div><strong>Store emails unchanged</strong><p>Shopify order and shipping emails keep their current settings.</p></div></div>
             </aside>
           </div>
@@ -479,7 +479,7 @@ export default function SendingDomainPage() {
           <div className="body">
             <p>Nomi will create sending records for this domain. You’ll add them at your domain provider in the next step.</p>
             <div className="dl">
-              <div><span>From addresses</span><code>anything@{pendingDomain}</code></div>
+              <div><span>From address</span><code>hello@{pendingDomain}</code></div>
               <div><span>Bounce subdomain</span><code>{RETURN_PATH_SUBDOMAIN}.{pendingDomain}</code></div>
             </div>
             {actionError && result?.intent === "create" ? <p className="err" role="alert">{Icon.alert}{actionError}</p> : null}
@@ -498,11 +498,10 @@ export default function SendingDomainPage() {
           <header><div><div className="eyebrow" style={{ color: "#a3004f" }}>Change sending domain</div><h2 id="change-title">{view?.verified ? `Stop sending from ${current.domain}?` : `Remove ${current.domain}?`}</h2></div><button type="button" className="x" onClick={() => setModal(null)} disabled={busyIntent === "remove"} aria-label="Close">×</button></header>
           <div className="body">
             <p>{view?.verified
-              ? `Campaigns can’t send until the new domain is verified. From addresses on ${current.domain} stop working in Nomi as soon as you continue.`
+              ? `Emails send from Nomi’s address until the new domain is verified. hello@${current.domain} stops being used as soon as you continue.`
               : `Nomi removes ${current.domain} and its records from its email provider. You can delete the DNS records you added at your domain provider.`}</p>
             <div className="dl">
-              <div><span>From address affected</span><code>anything@{current.domain}</code></div>
-              {view?.verified ? <div><span>Scheduled campaigns</span><code>Paused until verified</code></div> : null}
+              <div><span>From address affected</span><code>hello@{current.domain}</code></div>
             </div>
             {actionError && result?.intent === "remove" ? <p className="err" role="alert">{Icon.alert}{actionError}</p> : null}
           </div>

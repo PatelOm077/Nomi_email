@@ -27,7 +27,7 @@ export interface LifecycleFlowInfo {
 
 export function buildLifecycleSlots(shopName: string): LifecycleSlotInfo[] {
   return [
-    { id: "welcome-1", flowId: "welcome", name: "1st Welcome Email", subject: `Welcome to ${shopName}`, previewText: "Your welcome gift awaits", timing: "Not sending yet" },
+    { id: "welcome-1", flowId: "welcome", name: "1st Welcome Email", subject: `Welcome to ${shopName}`, previewText: "Glad you're here", timing: "Not sending yet" },
     { id: "welcome-2", flowId: "welcome", name: "2nd Welcome Email", subject: `A little more about ${shopName}`, previewText: "What makes this store different", timing: "Not sending yet" },
     { id: "welcome-3", flowId: "welcome", name: "3rd Welcome Email", subject: "A few customer favorites", previewText: "Real products, chosen for you", timing: "Not sending yet" },
     { id: "interest-1", flowId: "interest", name: "1st Follow-Up Email", subject: "A closer look", previewText: "A useful follow-up from the store", timing: "7 day(s) after joining, if no order" },

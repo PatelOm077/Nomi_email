@@ -23,7 +23,7 @@ export const supportGuides = [
     category: "Flow Editor",
     keywords:
       "flow welcome abandoned cart checkout review interested winback back thirteen 13",
-    body: "Nomi designs five flows and 13 emails: Welcome (3), Still Interested? (2), Abandoned Cart (3), How Was It? (2), and Welcome Back (3). Open Flow Editor to review each email and its subject line. Live event delivery currently covers abandoned-cart recovery and delivered-order review requests. Scheduling for the other flows is still being built. Shopify continues to send order, shipping, and refund confirmations.",
+    body: "Nomi designs five flows and 13 emails: Welcome (3), Still Interested? (2), Abandoned Cart (3), How Was It? (2), and Welcome Back (3). Open Flow Editor to review each email and its subject line. Once you activate your flows, four of them send on their own: Abandoned Cart (1 hour, 1 day and 3 days after a checkout is left), Still Interested? (7 and 10 days after someone subscribes, if they haven't ordered), How Was It? (a review request 7 days after an order is delivered), and Welcome Back (30, 44 and 74 days after a customer's last order). An order stops the cart, Still Interested? and Welcome Back emails for that customer. Welcome and the Thank You email aren't sending yet. Shopify continues to send order, shipping, and refund confirmations.",
     href: "/app/flow-editor",
     action: "Open Flow Editor",
   },
@@ -33,7 +33,7 @@ export const supportGuides = [
     category: "Sending",
     keywords:
       "send sending sent delivery deliver email disabled paused not working failed",
-    body: "Start with these checks:\n\n1. In Brand & Settings, check that sending is enabled.\n2. Make sure your email family is approved in Brand Studio.\n3. For cart recovery, the checkout must be incomplete and the customer must have marketing consent. Review requests wait for delivery.\n\nStill stuck? Choose Talk to the team. They can check the sender and delivery service; this guide assistant cannot inspect your logs.",
+    body: "Start with these checks:\n\n1. In Brand & Settings, check that sending is enabled.\n2. Make sure your email family is approved in Brand Studio.\n3. Every flow email needs the customer's email marketing consent. Cart recovery also needs an unfinished checkout, and review requests wait 7 days after delivery.\n4. Welcome emails aren't sending yet, and a flow with Only send to new contacts on skips customers who joined before you switched it on.\n\nStill stuck? Choose Talk to the team. They can check the sender and delivery service; this guide assistant cannot inspect your logs.",
     href: "/app/brand-settings",
     action: "Open Brand & Settings",
   },
@@ -51,7 +51,7 @@ export const supportGuides = [
     title: "Contacts and marketing consent",
     category: "Contacts",
     keywords: "contact customer subscriber consent unsubscribe list import",
-    body: "Open Contacts to review your store’s customers and subscription status. A customer record is not permission to send marketing. Nomi’s abandoned-cart recovery requires marketing consent. Do not send marketing to unsubscribed customers.",
+    body: "Open Contacts to review your store’s customers and subscription status. A customer record is not permission to send marketing. Every Nomi flow email requires marketing consent. Do not send marketing to unsubscribed customers.",
     href: "/app/contacts",
     action: "Open Contacts",
   },

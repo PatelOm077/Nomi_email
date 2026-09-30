@@ -191,7 +191,7 @@ export default function Setup() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <h1 style={{ margin: 0, font: `600 28px/1.15 ${SERIF}`, letterSpacing: "-0.02em" }}>Enable Nomi on your theme</h1>
               <p style={{ margin: 0, font: `16px/1.55 ${SANS}`, color: N700 }}>
-                Nomi needs its script on your store to show the sign-up pop-up and send emails based on what visitors do.
+                Turn on Nomi Script once so Nomi is connected to your storefront. Shoppers won&rsquo;t see anything and your store&rsquo;s look doesn&rsquo;t change.
               </p>
             </div>
             <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -425,11 +425,10 @@ function SetupExample({ sectionRef, flag, showMe }: { sectionRef: Ref<HTMLElemen
               {popup && (
                 <div className="nomi-setup-in" style={{ position: "absolute", inset: 0, background: "rgba(32,30,29,.3)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
                   <div style={{ ...CARD, boxShadow: "0 12px 32px rgba(45,43,43,.22)", padding: 20, maxWidth: 200, display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
-                    <button type="button" onClick={() => setPopup(false)} aria-label="Close preview pop-up" style={{ position: "absolute", top: 2, right: 2, width: 32, height: 32, border: 0, background: "transparent", cursor: "pointer", color: N600, font: `18px ${SANS}` }}>×</button>
-                    <span style={{ font: `600 11px ${SANS}`, letterSpacing: ".12em", textTransform: "uppercase", color: "#d6006c" }}>Nomi is live</span>
-                    <span style={{ font: `600 18px/1.2 ${SERIF}` }}>Get 10% off your first order</span>
-                    <span style={{ height: 30, border: `1px solid ${N300}`, borderRadius: 2 }} />
-                    <span style={{ height: 30, background: "#0088b0", borderRadius: 2 }} />
+                    <button type="button" onClick={() => setPopup(false)} aria-label="Close practice message" style={{ position: "absolute", top: 2, right: 2, width: 32, height: 32, border: 0, background: "transparent", cursor: "pointer", color: N600, font: `18px ${SANS}` }}>×</button>
+                    <span style={{ font: `600 11px ${SANS}`, letterSpacing: ".12em", textTransform: "uppercase", color: "#d6006c" }}>Nomi is on</span>
+                    <span style={{ font: `600 18px/1.2 ${SERIF}` }}>Your store looks exactly the same</span>
+                    <span style={{ font: `13px/1.45 ${SANS}`, color: N700 }}>Nomi Script is invisible to shoppers.</span>
                   </div>
                 </div>
               )}

@@ -15,6 +15,8 @@ import { isSuppressed, listUnsubscribeHeaders, unsubscribeUrl } from "./unsubscr
 import { withComplianceFooter } from "../email-engine/compliance-footer";
 import { loadShopFooterAddress, resolveSenderFooter } from "../dashboard/sender-footer.server";
 import { emailIdForJob, flowOfEmail, parseFlowSettings, passesNewContactRule } from "./lifecycle-schedule";
+import { fromHeader } from "./from-header";
+import { isSendingDomainReady } from "./sending-domain";
 import type { LifecycleEmailId } from "../email-engine/types";
 
 // Still interested? and Welcome back are sent as designed in Brand Studio;
@@ -472,9 +474,17 @@ export async function processPendingEmailJobs(limit = 10) {
       }
       const unsubscribeLink = unsubscribeUrl({ shop: job.shop, email: prepared.to });
       const config = getEmailDeliveryConfig();
+      const sendingDomain = job.preparedEmail
+        ? null
+        : await db.sendingDomain.findUnique({ where: { shop: job.shop }, select: { domain: true, status: true } });
       const delivery: SendEmailInput = job.preparedEmail ? JSON.parse(job.preparedEmail) as SendEmailInput : {
         ...prepared,
-        from: `${config.fromName} <${config.fromEmail}>`,
+        from: fromHeader({
+          senderName: settings?.senderName || footer.name,
+          verifiedDomain: isSendingDomainReady(sendingDomain?.status) ? sendingDomain?.domain : null,
+          fallbackName: config.fromName,
+          fallbackEmail: config.fromEmail,
+        }),
         html: withComplianceFooter(prepared.html, { postalLine: footer.line, unsubscribeUrl: unsubscribeLink }),
         headers: listUnsubscribeHeaders(unsubscribeLink),
       };

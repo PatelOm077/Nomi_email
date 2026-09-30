@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
+import { SENDING_FLOWS } from "../email-delivery/lifecycle-schedule";
 
 // Inline so the state colors can't be lost to the embedded-iframe CSS issue.
 const APP_EMBED_TAG_STYLE = {
@@ -109,13 +110,13 @@ export function NomiDashboard({
 
         <section className="nomi-dashboard-setup" aria-labelledby="nomi-dashboard-setup-title">
           <div className="nomi-dashboard-setup-meta">
-            <span>Getting started · {completedSteps} of 4 complete</span>
+            <span>Getting started · {completedSteps} of 3 complete</span>
             <span aria-hidden="true">⋮</span>
           </div>
           <h2 id="nomi-dashboard-setup-title">Get started with Nomi</h2>
           <p>Follow these steps to activate your email flows.</p>
-          <div className="nomi-dashboard-progress" aria-label={`${completedSteps} of 4 setup steps complete`}>
-            {[0, 1, 2, 3].map((index) => <i className={index < completedSteps ? "is-complete" : ""} key={index} />)}
+          <div className="nomi-dashboard-progress" aria-label={`${completedSteps} of 3 setup steps complete`}>
+            {[0, 1, 2].map((index) => <i className={index < completedSteps ? "is-complete" : ""} key={index} />)}
           </div>
           <div className="nomi-dashboard-checklist">
             <ChecklistRow complete title="Finish onboarding" detail="Your store and email preferences are saved." />
@@ -132,7 +133,6 @@ export function NomiDashboard({
               detail={generatedCount > 0 ? `${generatedCount} of ${totalEmailCount} Brand Studio emails are ready.` : "Create all 13 emails together from one approved Brand System."}
               href="/app/brand-studio"
             />
-            <ChecklistRow title="Rate your experience so far" rating />
           </div>
         </section>
 
@@ -170,10 +170,14 @@ export function NomiDashboard({
             <tbody>{flows.map((flow) => {
               const ready = flow.ready === flow.total;
               const stats = flow.stats ?? { sent: 0, opened: 0, clicked: 0, conversions: 0, conversionValue: 0 };
-              return <tr key={flow.id}><td><Link to={`/app/flow-editor?flow=${flow.id}`}>› {flowNames[flow.id] ?? flow.id}</Link></td><td>{stats.sent}</td><td>{formatRate(stats.opened, stats.sent)}</td><td>{formatRate(stats.clicked, stats.sent)}</td><td>{stats.conversions}</td><td>{formatMoney(stats.conversionValue, money)}</td><td><span className={ready ? "nomi-dashboard-status-ready" : "nomi-dashboard-status-needs"} aria-label={ready ? "Ready" : `${flow.ready} of ${flow.total} emails ready`}>{ready ? "●" : "▲"}</span></td></tr>;
+              // Welcome has emails but no live trigger yet (lifecycle-schedule.ts).
+              const status = !SENDING_FLOWS.has(flow.id)
+                ? <span className="nomi-dashboard-tag">Not sending yet</span>
+                : <span className={ready ? "nomi-dashboard-status-ready" : "nomi-dashboard-status-needs"} aria-label={ready ? (sendingEnabled ? "Sending" : "Ready, flows off") : `${flow.ready} of ${flow.total} emails ready`}>{ready ? "●" : "▲"}</span>;
+              return <tr key={flow.id}><td><Link to={`/app/flow-editor?flow=${flow.id}`}>› {flowNames[flow.id] ?? flow.id}</Link></td><td>{stats.sent}</td><td>{formatRate(stats.opened, stats.sent)}</td><td>{formatRate(stats.clicked, stats.sent)}</td><td>{stats.conversions}</td><td>{formatMoney(stats.conversionValue, money)}</td><td>{status}</td></tr>;
             })}</tbody>
           </table>
-          <p className="nomi-dashboard-table-note"><span>▲ Not set up — this flow won&rsquo;t send</span><span className="is-ready">● Once activated, it sends automatically</span></p>
+          <p className="nomi-dashboard-table-note"><span>▲ Emails not built yet — this flow won&rsquo;t send</span><span className="is-ready">{sendingEnabled ? "● Sending automatically" : "● Ready — sends once you activate your flows"}</span></p>
         </TableSection>
 
         <TableSection title="Campaigns">
@@ -209,7 +213,6 @@ function ChecklistRow({
   complete = false,
   title,
   detail,
-  rating = false,
   action,
   disabled = false,
   titleHint,
@@ -218,13 +221,12 @@ function ChecklistRow({
   complete?: boolean;
   title: string;
   detail?: string;
-  rating?: boolean;
   action?: () => void;
   disabled?: boolean;
   titleHint?: string;
   href?: string;
 }) {
-  const content = <><span className={`nomi-dashboard-check${complete ? " is-complete" : ""}`} aria-hidden="true">{complete ? <svg viewBox="0 0 12 12" fill="none"><path d="M2.35 6.15 4.85 8.55 9.65 3.45" /></svg> : null}</span><span className="nomi-dashboard-check-copy"><strong>{title}</strong>{detail ? <small>{detail}</small> : null}</span>{rating ? <span className="nomi-dashboard-rating" aria-label="Not yet rated">☆ ☆ ☆ ☆ ☆</span> : null}</>;
+  const content = <><span className={`nomi-dashboard-check${complete ? " is-complete" : ""}`} aria-hidden="true">{complete ? <svg viewBox="0 0 12 12" fill="none"><path d="M2.35 6.15 4.85 8.55 9.65 3.45" /></svg> : null}</span><span className="nomi-dashboard-check-copy"><strong>{title}</strong>{detail ? <small>{detail}</small> : null}</span></>;
   if (href) return <Link className="nomi-dashboard-check-row" to={href}>{content}</Link>;
   return action ? <button className="nomi-dashboard-check-row" type="button" onClick={action} disabled={disabled} title={titleHint}>{content}</button> : <div className="nomi-dashboard-check-row">{content}</div>;
 }

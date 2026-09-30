@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     },
     shopSettings: { findUnique: vi.fn() },
     brandStudioProfile: { findUnique: vi.fn() },
+    sendingDomain: { findUnique: vi.fn() },
   },
   admin: vi.fn(),
   graphql: vi.fn(),
@@ -228,6 +229,7 @@ describe("processPendingEmailJobs", () => {
       mocks.db.emailJob.update,
       mocks.db.shopSettings.findUnique,
       mocks.db.brandStudioProfile.findUnique,
+      mocks.db.sendingDomain.findUnique,
       mocks.admin,
       mocks.graphql,
       mocks.generateReviewRequestEmail,
@@ -245,6 +247,7 @@ describe("processPendingEmailJobs", () => {
       tone: "warm-plain",
     });
     mocks.db.brandStudioProfile.findUnique.mockResolvedValue(null);
+    mocks.db.sendingDomain.findUnique.mockResolvedValue(null);
     mocks.admin.mockResolvedValue({ admin: { graphql: mocks.graphql } });
     mocks.generateReviewRequestEmail.mockResolvedValue("<html>review</html>");
     mocks.generateAbandonedCartEmail.mockResolvedValue("<html>cart</html>");
@@ -338,6 +341,34 @@ describe("processPendingEmailJobs", () => {
       }),
       { effort: "low" },
     );
+  });
+
+  it("sends from the merchant's verified domain under their sender name", async () => {
+    mocks.db.emailJob.findMany.mockResolvedValue([baseJob]);
+    mocks.db.shopSettings.findUnique.mockResolvedValue({ sendingEnabled: true, language: "en", tone: "warm-plain", senderName: "Moon & Mango" });
+    mocks.db.sendingDomain.findUnique.mockResolvedValue({ domain: "moonandmango.com", status: "verified" });
+    mocks.db.brandStudioProfile.findUnique.mockResolvedValue({
+      status: "complete",
+      evidence: JSON.stringify(approvedEvidence),
+      brandSystem: JSON.stringify(approvedSystem),
+      lifecycleRecipes: JSON.stringify(approvedRecipes),
+      renderedEmails: JSON.stringify(approvedRenderedEmails),
+      evidenceFingerprint: "evidence-v2",
+      snapshotEvidenceFingerprint: "evidence-v2",
+      generatedEvidenceFingerprint: "evidence-v2",
+      directions: JSON.stringify(approvedDirections),
+      selectedDirectionId: approvedSystem.directionId,
+    });
+    setGraphqlResponse(orderResponse);
+
+    await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
+    expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ from: '"Moon & Mango" <hello@moonandmango.com>' }));
+
+    // A domain still verifying keeps Nomi's address.
+    mocks.db.emailJob.findMany.mockResolvedValue([{ ...baseJob, id: "job-2" }]);
+    mocks.db.sendingDomain.findUnique.mockResolvedValue({ domain: "moonandmango.com", status: "pending" });
+    await processPendingEmailJobs();
+    expect(mocks.sendEmail).toHaveBeenLastCalledWith(expect.objectContaining({ from: '"Moon & Mango" <mail@example.com>' }));
   });
 
   it("fails closed when the approved Brand Studio profile is stale", async () => {
