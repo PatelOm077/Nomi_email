@@ -1,11 +1,5 @@
 import db from "../db.server";
-
-// Which lifecycle flow each sendable webhook topic belongs to. Only these two
-// flows send today; the others report honest zeros until they do.
-export const FLOW_BY_TOPIC: Record<string, string> = {
-  CHECKOUTS_UPDATE: "cart",
-  FULFILLMENTS_UPDATE: "care",
-};
+import { emailIdForJob, flowOfEmail } from "./lifecycle-schedule";
 
 // An order counts as a conversion for the most recent flow email the same
 // customer was sent within this window before ordering.
@@ -103,6 +97,7 @@ export async function loadDashboardEmailStats(
     where: { shop, status: "sent", sentAt: { gte: since } },
     select: {
       topic: true,
+      emailId: true,
       recipient: true,
       openedAt: true,
       clickedAt: true,
@@ -115,7 +110,8 @@ export async function loadDashboardEmailStats(
   const recipients = new Set<string>();
   let currency: string | null = null;
   for (const job of jobs) {
-    const flowId = FLOW_BY_TOPIC[job.topic];
+    // Each email belongs to its own flow; flows that don't send report zeros.
+    const flowId = flowOfEmail(emailIdForJob(job));
     if (!flowId) continue;
     const stats = (flows[flowId] ??= { sent: 0, opened: 0, clicked: 0, conversions: 0, conversionValue: 0 });
     stats.sent += 1;

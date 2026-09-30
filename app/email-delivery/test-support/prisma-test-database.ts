@@ -39,6 +39,7 @@ export async function createPrismaTestDatabase(
       "plan" TEXT NOT NULL DEFAULT 'free',
       "subscribedContacts" INTEGER,
       "contactsCountedAt" DATETIME,
+      "flowSettings" TEXT NOT NULL DEFAULT '{}',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL
     )
@@ -80,6 +81,8 @@ export async function createPrismaTestDatabase(
       "updatedAt" DATETIME NOT NULL,
       "sentAt" DATETIME,
       "recipient" TEXT,
+      "emailId" TEXT,
+      "customerId" TEXT,
       "openedAt" DATETIME,
       "clickedAt" DATETIME,
       "convertedAt" DATETIME,

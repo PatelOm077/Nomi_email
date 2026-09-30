@@ -1,12 +1,7 @@
 import db from "../db.server";
 import { getApprovedBrandStudioFamily } from "../brand-studio/approved-family";
 import type { EmailBrandIdentity, LifecycleEmailId } from "../email-engine/types";
-import { personalSlotProblems } from "../email-engine/personal-slots";
-
-const REFERENCE_BY_TOPIC: Record<string, LifecycleEmailId | null> = {
-  CHECKOUTS_UPDATE: "cart-1",
-  FULFILLMENTS_UPDATE: "review-request",
-};
+import { needsPersonalSlots, personalSlotProblems } from "../email-engine/personal-slots";
 
 export type ApprovedPersonalEmail = {
   html: string;
@@ -14,34 +9,34 @@ export type ApprovedPersonalEmail = {
   storefrontUrl: string | null;
 };
 
-// The approved cart-1 / review-request email, sent as-is with the customer's
-// items filled in by code (email-engine/personal-slots.ts). Null when the
-// family isn't approved or this email predates the slot markup, in which case
-// the worker generates the email instead.
+// The approved Brand Studio email for one lifecycle step. Cart and review
+// emails are sent with the customer's items filled in by code
+// (email-engine/personal-slots.ts), so those must carry the slot markup;
+// the others are sent as designed. Null when the family isn't approved or a
+// slot email predates the markup (the worker then generates cart/review).
 export async function loadApprovedPersonalEmail(
   shop: string,
-  topic: string,
+  referenceId: LifecycleEmailId | null,
 ): Promise<ApprovedPersonalEmail | null> {
-  const referenceId = REFERENCE_BY_TOPIC[topic] ?? null;
   if (!referenceId) return null;
   const profile = await db.brandStudioProfile.findUnique({ where: { shop } });
   const approvedFamily = getApprovedBrandStudioFamily(profile);
   if (!approvedFamily) return null;
   const html = approvedFamily.renderedEmails[referenceId];
   const recipe = approvedFamily.recipes.find(({ id }) => id === referenceId);
-  if (!html || !recipe || personalSlotProblems(html).length) return null;
+  if (!html || !recipe) return null;
+  if (needsPersonalSlots(referenceId) && personalSlotProblems(html).length) return null;
   return { html, subject: recipe.subject, storefrontUrl: approvedFamily.evidence.storefrontUrl };
 }
 
 export async function loadApprovedBrandIdentity(
   shop: string,
-  topic: string,
+  referenceId: LifecycleEmailId | null,
 ): Promise<EmailBrandIdentity | null | undefined> {
   const profile = await db.brandStudioProfile.findUnique({ where: { shop } });
   if (!profile) return undefined;
   const approvedFamily = getApprovedBrandStudioFamily(profile);
   if (!approvedFamily) return null;
-  const referenceId = REFERENCE_BY_TOPIC[topic] ?? null;
   const reference = referenceId
     ? approvedFamily.recipes.find(({ id }) => id === referenceId) ?? null
     : null;

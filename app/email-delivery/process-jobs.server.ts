@@ -14,8 +14,29 @@ import type { GenerateEmailOptions } from "../email-engine/generate-email";
 import { isSuppressed, listUnsubscribeHeaders, unsubscribeUrl } from "./unsubscribe.server";
 import { withComplianceFooter } from "../email-engine/compliance-footer";
 import { loadShopFooterAddress, resolveSenderFooter } from "../dashboard/sender-footer.server";
+import { emailIdForJob, flowOfEmail, parseFlowSettings, passesNewContactRule } from "./lifecycle-schedule";
+import type { LifecycleEmailId } from "../email-engine/types";
 
-const SENDABLE_TOPICS = new Set(["CHECKOUTS_UPDATE", "FULFILLMENTS_UPDATE"]);
+// Still interested? and Welcome back are sent as designed in Brand Studio;
+// just before sending, the customer must still be subscribed (and, for
+// Still interested?, still not have ordered).
+const EMAIL_CUSTOMER_QUERY = `#graphql
+  query EmailCustomer($id: ID!) {
+    customer(id: $id) {
+      defaultEmailAddress { emailAddress marketingState }
+      numberOfOrders
+    }
+  }
+`;
+
+type EmailCustomerResponse = {
+  data: {
+    customer: {
+      defaultEmailAddress: { emailAddress: string; marketingState: string } | null;
+      numberOfOrders: string | number;
+    } | null;
+  };
+};
 
 const EMAIL_ORDER_QUERY = `#graphql
   query EmailOrder($id: ID!) {
@@ -24,7 +45,7 @@ const EMAIL_ORDER_QUERY = `#graphql
       id
       name
       email
-      customer { firstName }
+      customer { firstName createdAt }
       lineItems(first: 50) {
         edges {
           node {
@@ -69,7 +90,7 @@ type OrderData = {
   id: string;
   name: string;
   email: string | null;
-  customer: { firstName: string | null } | null;
+  customer: { firstName: string | null; createdAt: string | null } | null;
   lineItems: {
     edges: {
       node: {
@@ -176,6 +197,7 @@ function subject(kind: keyof (typeof SUBJECTS)["en"], language: EmailLanguage, o
 
 async function prepareAbandonedCart(
   shop: string,
+  emailId: LifecycleEmailId,
   payload: Record<string, unknown>,
   brandIdentity: EmailBrandIdentity | undefined,
   approved: ApprovedPersonalEmail | null,
@@ -204,7 +226,9 @@ async function prepareAbandonedCart(
     price: formatMoney(node.originalTotalPriceSet.shopMoney, language),
     imageUrl: await optimizeEmailImageUrl(node.image?.url),
   })));
-  const idempotencyKey = `cart:${shop}:${token}`;
+  // Step 1 keeps its original key; later steps are their own sends.
+  const step = emailId === "cart-1" ? "" : `:${emailId.slice(-1)}`;
+  const idempotencyKey = `cart:${shop}:${token}${step}`;
 
   const prebuilt = approved && isStoreLanguage(language, settings?.language)
     ? fillPersonalSlots(approved.html, {
@@ -226,22 +250,54 @@ async function prepareAbandonedCart(
   }, FALLBACK_GENERATION);
   return {
     to: email,
-    subject: SUBJECTS[language].cart,
+    subject: approved && isStoreLanguage(language, settings?.language) ? approved.subject : SUBJECTS[language].cart,
     html,
     idempotencyKey,
   };
 }
 
+async function prepareCustomerEmail(
+  shop: string,
+  emailId: LifecycleEmailId,
+  payload: Record<string, unknown>,
+  approved: ApprovedPersonalEmail | null,
+  cached?: PreparedEmail,
+): Promise<PreparedEmail | null> {
+  const customerId = typeof payload.customer_id === "string" ? payload.customer_id : null;
+  if (!customerId) throw new Error(`${emailId} job has no customer.`);
+  const { admin } = await unauthenticated.admin(shop);
+  const response = await admin.graphql(EMAIL_CUSTOMER_QUERY, { variables: { id: customerId } });
+  const { data } = (await response.json()) as EmailCustomerResponse;
+  const address = data.customer?.defaultEmailAddress;
+  if (!address?.emailAddress || address.marketingState !== "SUBSCRIBED") return null;
+  if (emailId.startsWith("interest-") && Number(data.customer?.numberOfOrders ?? 0) > 0) return null;
+  if (await isSuppressed({ shop, email: address.emailAddress })) return null;
+  if (cached) return cached.to === address.emailAddress ? cached : null;
+  // No per-send generation here: these emails exist only as the approved design.
+  if (!approved) throw new Error(`Build and approve the ${emailId} email in Brand Studio before it can send.`);
+  const anchor = typeof payload.order_id === "string" ? payload.order_id : customerId;
+  return {
+    to: address.emailAddress,
+    subject: approved.subject,
+    html: approved.html,
+    idempotencyKey: `${emailId}:${shop}:${anchor}`,
+  };
+}
+
 async function prepareEmail(
   shop: string,
+  emailId: LifecycleEmailId,
   topic: string,
   payload: Record<string, unknown>,
   brandIdentity: EmailBrandIdentity | undefined,
   approved: ApprovedPersonalEmail | null,
   cached?: PreparedEmail,
 ): Promise<PreparedEmail | null> {
-  if (topic === "CHECKOUTS_UPDATE") {
-    return prepareAbandonedCart(shop, payload, brandIdentity, approved, cached);
+  if (emailId.startsWith("cart-")) {
+    return prepareAbandonedCart(shop, emailId, payload, brandIdentity, approved, cached);
+  }
+  if (emailId.startsWith("interest-") || emailId.startsWith("winback-")) {
+    return prepareCustomerEmail(shop, emailId, payload, approved, cached);
   }
 
   const orderId = orderIdFromPayload(payload);
@@ -267,8 +323,10 @@ async function prepareEmail(
     orderNumber: order.name,
   };
 
-  if (topic === "FULFILLMENTS_UPDATE") {
+  if (emailId === "review-request") {
     if (String(payload.shipment_status).toLowerCase() !== "delivered") return null;
+    const flowSettings = parseFlowSettings(settings?.flowSettings);
+    if (!passesNewContactRule(flowSettings, "care", order.customer?.createdAt)) return null;
     const reviewUrl = order.lineItems.edges[0]?.node.product?.onlineStoreUrl ?? null;
     const lineItems = await Promise.all(order.lineItems.edges.map(async ({ node }) => ({
       title: node.title,
@@ -295,7 +353,7 @@ async function prepareEmail(
     return { to: order.email, subject: subject("review", language, order.name), html, idempotencyKey };
   }
 
-  throw new Error(`Unsupported email webhook topic: ${topic}`);
+  throw new Error(`Unsupported lifecycle email: ${emailId} (${topic})`);
 }
 
 export async function processPendingEmailJobs(limit = 10) {
@@ -343,7 +401,8 @@ export async function processPendingEmailJobs(limit = 10) {
       if (job.deliveryStartedAt && Date.now() - job.deliveryStartedAt.getTime() >= 23 * 60 * 60_000) {
         throw new Error("Delivery outcome uncertain beyond provider idempotency window; manual review required.");
       }
-      if (!SENDABLE_TOPICS.has(job.topic)) {
+      const emailId = emailIdForJob(job);
+      if (!emailId || !flowOfEmail(emailId)) {
         await db.emailJob.update({
           where: { id: job.id },
           data: { status: "skipped", lastError: "Email type is no longer supported." },
@@ -357,7 +416,7 @@ export async function processPendingEmailJobs(limit = 10) {
         results.skipped += 1;
         continue;
       }
-      const brandIdentity = await loadApprovedBrandIdentity(job.shop, job.topic);
+      const brandIdentity = await loadApprovedBrandIdentity(job.shop, emailId);
       if (brandIdentity === null) {
         await db.emailJob.update({
           where: { id: job.id },
@@ -383,9 +442,10 @@ export async function processPendingEmailJobs(limit = 10) {
           continue;
         }
       }
-      const approvedEmail = job.preparedEmail ? null : await loadApprovedPersonalEmail(job.shop, job.topic);
+      const approvedEmail = job.preparedEmail ? null : await loadApprovedPersonalEmail(job.shop, emailId);
       const prepared = await prepareEmail(
         job.shop,
+        emailId,
         job.topic,
         JSON.parse(job.payload) as Record<string, unknown>,
         brandIdentity,

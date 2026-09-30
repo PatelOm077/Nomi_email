@@ -16,6 +16,7 @@ import { EMAIL_GENERATION_PAUSED } from "../email-engine/generation-status";
 import { NomiDashboard } from "../dashboard/nomi-dashboard";
 import { planFor } from "../billing/plans";
 import { LIFECYCLE_FLOWS, buildLifecycleSlots } from "../dashboard/lifecycle-flow-catalog";
+import { SENDING_FLOWS, parseFlowSettings, type SendingFlowId } from "../email-delivery/lifecycle-schedule";
 import type {
   EmailLanguage,
   EmailTone,
@@ -167,6 +168,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     delivery: {
       providerConfigured,
       sendingEnabled: settings.sendingEnabled,
+      flowSettings: parseFlowSettings(settings.flowSettings),
       language: settings.language,
       tone: settings.tone,
       // The real configured sender identity, shown in the flow preview's
@@ -197,7 +199,8 @@ type DashboardActionRequest =
   | GenerationRequest
   | { kind: "set-sending"; enabled: boolean }
   | { kind: "set-language"; language: EmailLanguage }
-  | { kind: "set-tone"; tone: EmailTone };
+  | { kind: "set-tone"; tone: EmailTone }
+  | { kind: "set-only-new"; flow: string; enabled: boolean };
 
 // The dashboard reloads its loader data (and re-fires generation) on every
 // page load, so identical order/cart/etc. data would otherwise re-call
@@ -238,6 +241,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         where: { shop: session.shop },
         create: { shop: session.shop, language: parsed.language },
         update: { language: parsed.language },
+      });
+      return { deliveryUpdated: true };
+    }
+    if (parsed.kind === "set-only-new") {
+      if (!SENDING_FLOWS.has(parsed.flow)) return { error: "This flow isn’t sending yet." };
+      const current = await db.shopSettings.findUnique({ where: { shop: session.shop }, select: { flowSettings: true } });
+      const flowSettings = parseFlowSettings(current?.flowSettings);
+      const flow = parsed.flow as SendingFlowId;
+      // The moment it's switched on is the line: only customers created
+      // after it get this flow (email-delivery/lifecycle-schedule.ts).
+      flowSettings[flow] = parsed.enabled ? { onlyNewSince: new Date().toISOString() } : {};
+      await db.shopSettings.upsert({
+        where: { shop: session.shop },
+        create: { shop: session.shop, flowSettings: JSON.stringify(flowSettings) },
+        update: { flowSettings: JSON.stringify(flowSettings) },
       });
       return { deliveryUpdated: true };
     }
@@ -1176,10 +1194,33 @@ export default function Index() {
                   <p>{selectedFlow.stop}</p>
                 </div>
               </div>
-              <label className="nomi-reference-new-contacts">
-                <input type="checkbox" />
-                Only send to new contacts
-              </label>
+              {SENDING_FLOWS.has(selectedFlow.id) ? (
+                <label className="nomi-reference-new-contacts">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(delivery.flowSettings[selectedFlow.id as SendingFlowId]?.onlyNewSince)}
+                    disabled={deliveryFetcher.state !== "idle"}
+                    onChange={(event) =>
+                      deliveryFetcher.submit(
+                        { payload: JSON.stringify({ kind: "set-only-new", flow: selectedFlow.id, enabled: event.currentTarget.checked }) },
+                        { method: "POST" },
+                      )
+                    }
+                  />
+                  Only send to new contacts
+                  {delivery.flowSettings[selectedFlow.id as SendingFlowId]?.onlyNewSince ? (
+                    <small style={{ display: "block", marginLeft: 26, color: "#605d5d" }}>
+                      Customers who joined before{" "}
+                      {new Date(delivery.flowSettings[selectedFlow.id as SendingFlowId]!.onlyNewSince!).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}{" "}
+                      won’t get this flow.
+                    </small>
+                  ) : null}
+                </label>
+              ) : (
+                <p className="nomi-reference-new-contacts" style={{ color: "#605d5d" }}>
+                  This flow isn’t sending yet.
+                </p>
+              )}
               <div className="nomi-reference-timing-list">
                 {referenceTemplates
                   .filter(({ flowId }) => flowId === selectedFlow.id)

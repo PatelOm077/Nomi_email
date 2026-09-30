@@ -417,7 +417,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // name), never brandSystem.name, which names the creative direction.
   const [storeName, approvedBrand, brandProfile] = await Promise.all([
     loadDashboardShopName(admin),
-    loadApprovedBrandIdentity(session.shop, "campaign").catch(() => null),
+    loadApprovedBrandIdentity(session.shop, null).catch(() => null),
     db.brandStudioProfile.findUnique({ where: { shop: session.shop } }).catch(() => null),
   ]);
   const brandIdentity = approvedBrand ?? undefined;

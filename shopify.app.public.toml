@@ -26,7 +26,7 @@ api_version = "2026-10"
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/email-events"
-  topics = [ "orders/create", "fulfillments/update", "checkouts/update" ]
+  topics = [ "orders/create", "fulfillments/update", "checkouts/update", "customers/create", "customers/update" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/compliance"

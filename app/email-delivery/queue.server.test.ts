@@ -50,7 +50,7 @@ describe("enqueueEmailJob", () => {
 
     expect(db.emailJob.create).toHaveBeenCalledWith({
       data: {
-        webhookId: "webhook-123",
+        webhookId: "review:paper-boat.myshopify.com:1042",
         shop: "paper-boat.myshopify.com",
         topic: "FULFILLMENTS_UPDATE",
         payload: JSON.stringify({
@@ -58,6 +58,9 @@ describe("enqueueEmailJob", () => {
           order_id: 1042,
           shipment_status: "delivered",
         }),
+        emailId: "review-request",
+        // A week after delivery.
+        availableAt: new Date("2026-08-26T12:00:00.000Z"),
       },
     });
   });
@@ -98,15 +101,17 @@ describe("enqueueEmailJob", () => {
       }),
     ).resolves.toBe("ignored");
 
+    // Every step of that checkout's recovery stops, not just the first.
     expect(db.emailJob.updateMany).toHaveBeenCalledWith({
       where: {
-        webhookId: "checkout:paper-boat.myshopify.com:checkout-token",
+        webhookId: { startsWith: "checkout:paper-boat.myshopify.com:checkout-token" },
         status: { in: ["pending", "processing"] },
+        deliveryStartedAt: null,
       },
       data: { status: "skipped", lastError: "Checkout completed." },
     });
-    expect(db.shopSettings.findUnique).not.toHaveBeenCalled();
     expect(db.emailJob.create).not.toHaveBeenCalled();
+    expect(db.emailJob.upsert).not.toHaveBeenCalled();
   });
 
   it("ignores webhook topics outside lifecycle delivery", async () => {
@@ -186,22 +191,12 @@ describe("enqueueEmailJob", () => {
 
     const webhookId = "checkout:paper-boat.myshopify.com:token-1";
     const availableAt = new Date("2026-08-19T13:00:00.000Z");
-    expect(db.emailJob.upsert).toHaveBeenCalledWith({
+    const step = { payload: JSON.stringify(payload), emailId: "cart-1", customerId: null, availableAt };
+    expect(db.emailJob.upsert).toHaveBeenCalledTimes(3);
+    expect(db.emailJob.upsert).toHaveBeenNthCalledWith(1, {
       where: { webhookId },
-      create: {
-        webhookId,
-        shop: "paper-boat.myshopify.com",
-        topic: "CHECKOUTS_UPDATE",
-        payload: JSON.stringify(payload),
-        availableAt,
-      },
-      update: {
-        payload: JSON.stringify(payload),
-        status: "pending",
-        attempts: 0,
-        lastError: null,
-        availableAt,
-      },
+      create: { webhookId, shop: "paper-boat.myshopify.com", topic: "CHECKOUTS_UPDATE", ...step },
+      update: { ...step, status: "pending", attempts: 0, lastError: null },
     });
   });
 

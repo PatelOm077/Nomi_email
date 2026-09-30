@@ -127,6 +127,9 @@ model ShopSettings {
   // Email-subscribed customers (plan contact limits), refreshed from
   // Shopify at most hourly by app/billing/contacts.server.ts.
   subscribedContacts    Int?
+  // Per-flow options from the Flow Editor, JSON keyed by flow id:
+  // { "cart": { "onlyNewSince": "<ISO>" } } (email-delivery/lifecycle-schedule.ts).
+  flowSettings          String    @default("{}")
   contactsCountedAt     DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
@@ -301,6 +304,11 @@ model EmailJob {
   // openedAt/clickedAt come from Resend's email.opened / email.clicked
   // webhooks (first event only).
   recipient         String?
+  // Which lifecycle email this job sends (cart-2, interest-1, winback-3…)
+  // and whose it is, so a new order can cancel that customer's pending
+  // steps. Null on jobs queued before multi-step flows (read by topic).
+  emailId           String?
+  customerId        String?
   openedAt          DateTime?
   clickedAt         DateTime?
   convertedAt       DateTime?
@@ -311,6 +319,7 @@ model EmailJob {
   @@index([status, availableAt])
   @@index([shop, sentAt])
   @@index([shop, recipient, sentAt])
+  @@index([shop, customerId, status])
 }
 
 // One merchant-owned sending domain per shop, registered in Nomi's Resend

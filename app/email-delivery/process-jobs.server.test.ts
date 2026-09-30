@@ -500,6 +500,7 @@ describe("processPendingEmailJobs", () => {
       renderedEmails: JSON.stringify({
         ...approvedRenderedEmails,
         "cart-1": slottedEmail("cart-1"),
+        "cart-2": slottedEmail("cart-2"),
         "review-request": slottedEmail("review-request"),
       }),
       evidenceFingerprint: "evidence-v2",
@@ -569,6 +570,72 @@ describe("processPendingEmailJobs", () => {
       expect(sent.html).toContain("Linen Throw");
       expect(sent.html).toContain('href="https://shop.example.com/products/linen-throw"');
       expect(sent.html).not.toContain("$40.00");
+    });
+
+    it("sends the 2nd cart email from its own design with its own send key", async () => {
+      mocks.db.emailJob.findMany.mockResolvedValue([{ ...cartJob("en-US"), emailId: "cart-2" }]);
+      mocks.db.brandStudioProfile.findUnique.mockResolvedValue(slottedProfile());
+      setGraphqlResponse(multiItemCheckout);
+
+      await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
+      const sent = mocks.sendEmail.mock.calls[0][0] as { subject: string; html: string; idempotencyKey: string };
+      expect(sent.subject).toBe("A considered note 7");
+      expect(sent.html).toContain("<h1>cart-2</h1>");
+      expect(sent.idempotencyKey).toBe(`cart:${shop}:checkout-token:2`);
+    });
+
+    const customerJob = (emailId: string) => ({
+      ...baseJob,
+      topic: emailId.startsWith("winback-") ? "ORDERS_CREATE" : "CUSTOMERS_CREATE",
+      emailId,
+      customerId: "gid://shopify/Customer/77",
+      payload: JSON.stringify({ customer_id: "gid://shopify/Customer/77", order_id: "gid://shopify/Order/1001" }),
+    });
+    const customer = (marketingState: string, numberOfOrders: string) => ({
+      data: { customer: { defaultEmailAddress: { emailAddress: "ria@example.com", marketingState }, numberOfOrders } },
+    });
+
+    it("sends Still interested? as designed to a subscribed customer who hasn't ordered", async () => {
+      mocks.db.emailJob.findMany.mockResolvedValue([customerJob("interest-1")]);
+      mocks.db.brandStudioProfile.findUnique.mockResolvedValue(slottedProfile());
+      setGraphqlResponse(customer("SUBSCRIBED", "0"));
+
+      await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
+      const sent = mocks.sendEmail.mock.calls[0][0] as { to: string; subject: string; html: string };
+      expect(sent.to).toBe("ria@example.com");
+      expect(sent.subject).toBe("A considered note 4");
+      expect(sent.html).toContain("<h1>interest-1</h1>");
+      expect(sent.html).toContain("https://app.test/unsubscribe?t=ria@example.com");
+      expect(mocks.generateAbandonedCartEmail).not.toHaveBeenCalled();
+    });
+
+    it("skips Still interested? once the customer has ordered", async () => {
+      mocks.db.emailJob.findMany.mockResolvedValue([customerJob("interest-2")]);
+      mocks.db.brandStudioProfile.findUnique.mockResolvedValue(slottedProfile());
+      setGraphqlResponse(customer("SUBSCRIBED", "1"));
+
+      await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 0, skipped: 1 });
+      expect(mocks.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it("never sends Welcome back to a customer who unsubscribed", async () => {
+      mocks.db.emailJob.findMany.mockResolvedValue([customerJob("winback-1")]);
+      mocks.db.brandStudioProfile.findUnique.mockResolvedValue(slottedProfile());
+      setGraphqlResponse(customer("UNSUBSCRIBED", "3"));
+
+      await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 0, skipped: 1 });
+      expect(mocks.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it("sends Welcome back as designed to a subscribed past customer", async () => {
+      mocks.db.emailJob.findMany.mockResolvedValue([customerJob("winback-2")]);
+      mocks.db.brandStudioProfile.findUnique.mockResolvedValue(slottedProfile());
+      setGraphqlResponse(customer("SUBSCRIBED", "3"));
+
+      await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
+      const sent = mocks.sendEmail.mock.calls[0][0] as { html: string; idempotencyKey: string };
+      expect(sent.html).toContain("<h1>winback-2</h1>");
+      expect(sent.idempotencyKey).toBe(`winback-2:${shop}:gid://shopify/Order/1001`);
     });
   });
 

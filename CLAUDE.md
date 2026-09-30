@@ -119,7 +119,19 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
   `NOMI_SUPPORT_ADMIN_SECRET`, 32+ chars), and the merchant gets a "The Nomi
   team replied" email plus an unread dot on the launcher.
 - `app/email-delivery/` — Resend provider adapter, durable webhook queue,
-  and worker. Webhook routes only enqueue; never call Claude or Resend in a
+  and worker. `lifecycle-schedule.ts` is the one source of when each email
+  sends (the Flow Editor's timing labels must match it): Abandoned cart at
+  1h / +24h / +48h after the checkout (stopped by an order), Still
+  interested? 7 and 10 days after a customer joins the email list if they
+  haven't ordered (customers/create|update), How was it? review request 7
+  days after delivery, Welcome back 30 / +14 / +30 days after a subscribed
+  customer's latest order (each new order restarts it). Every step is queued
+  up front as an EmailJob with its `emailId`/`customerId`; an order or an
+  unsubscribe cancels that customer's pending steps, and the worker re-checks
+  consent (and no-order for Still interested?) before sending. Welcome and
+  the Thank-you email are designed but not triggered yet. "Only send to new
+  contacts" (ShopSettings.flowSettings) skips customers created before it
+  was switched on. Webhook routes only enqueue; never call Claude or Resend in a
   Shopify webhook request.
 - `app/routes/webhooks.email-events.tsx` — authenticated Shopify lifecycle
   ingress. `orders/create` is cancellation-only; it never sends an email.
