@@ -12,6 +12,7 @@ vi.mock("./domains.server", () => ({ refreshStaleSendingDomains }));
 vi.mock("./backup.server", () => ({ backupProductionDatabase: vi.fn(async () => undefined) }));
 vi.mock("../support/notifications.server", () => ({ processSupportNotifications }));
 vi.mock("./retention.server", () => ({ purgeExpiredEmailJobs: vi.fn(async () => ({ purged: 0 })) }));
+vi.mock("../billing/usage-billing.server", () => ({ runUsageBilling: vi.fn(async () => ({ enabled: false })) }));
 
 function workerRequest(authorization?: string) {
   const headers = new Headers();
@@ -79,6 +80,7 @@ describe("tasks.email-jobs action", () => {
       domains: { refreshed: 1 },
       support: { sent: 1, configured: true },
       retention: { purged: 0 },
+      usageBilling: { enabled: false },
     });
     expect(processPendingEmailJobs).toHaveBeenCalledOnce();
     expect(refreshStaleSendingDomains).toHaveBeenCalledOnce();

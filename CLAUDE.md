@@ -106,6 +106,11 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
   API (needs SHOPIFY_PARTNER_API_ACCESS_TOKEN, SHOPIFY_PARTNER_ORG_ID,
   SHOPIFY_APP_GID). Plan handles must contain free/starter/growth/pro. Until
   those are set, `/app/pricing` switches plans on development stores only.
+  Overage ($5 per started 500 extra emails or subscribed contacts a month)
+  is billed by `usage-billing.server.ts`: the email-jobs worker queues each
+  block as a `UsageReport` and sends it once to the App Events API (meters
+  `extra_emails_500` and `extra_contacts_500` on each paid plan, Fixed, $5
+  per unit, 0 included). Off until `NOMI_USAGE_BILLING=on`.
 - `app/support/` — the in-app help chat (`SupportWidget.tsx`, mounted in
   `app.tsx` on every page) and its backend (`api.support.tsx`). Merchant
   questions are answered by Claude (`assistant.server.ts`), grounded on the

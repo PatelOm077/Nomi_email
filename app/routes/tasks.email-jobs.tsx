@@ -5,6 +5,7 @@ import { refreshStaleSendingDomains } from "../email-delivery/domains.server";
 import { backupProductionDatabase } from "../email-delivery/backup.server";
 import { processSupportNotifications } from "../support/notifications.server";
 import { purgeExpiredEmailJobs } from "../email-delivery/retention.server";
+import { runUsageBilling } from "../billing/usage-billing.server";
 
 function authorized(request: Request): boolean {
   const secret = process.env.EMAIL_JOB_SECRET;
@@ -24,5 +25,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const domains = await refreshStaleSendingDomains();
   const support = await processSupportNotifications();
   const retention = await purgeExpiredEmailJobs();
-  return Response.json({ ...result, domains, support, retention });
+  const usageBilling = await runUsageBilling().catch((error) => {
+    console.error("[nomi] usage billing failed", error);
+    return { error: true };
+  });
+  return Response.json({ ...result, domains, support, retention, usageBilling });
 };

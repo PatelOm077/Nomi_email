@@ -87,8 +87,8 @@ export async function syncPlanFromShopify(
     const plan = handles ? planIdFromHandles(handles) ?? "free" : "free";
     await db.shopSettings.upsert({
       where: { shop },
-      create: { shop, plan },
-      update: { plan },
+      create: { shop, plan, shopGid: data.shop.id },
+      update: { plan, shopGid: data.shop.id },
     });
     lastSync.set(shop, Date.now());
     return plan;

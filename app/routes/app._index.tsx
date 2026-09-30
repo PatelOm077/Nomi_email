@@ -10,6 +10,8 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { getEmailDeliveryConfig, isEmailDeliveryConfigured } from "../email-delivery/config.server";
+import { fromHeader } from "../email-delivery/from-header";
+import { isSendingDomainReady } from "../email-delivery/sending-domain";
 import { generateNewsletterEmail } from "../email-engine/generate-newsletter-email";
 import { optimizeEmailImageUrl } from "../dashboard/email-image-url.server";
 import { EMAIL_GENERATION_PAUSED } from "../email-engine/generation-status";
@@ -171,14 +173,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       flowSettings: parseFlowSettings(settings.flowSettings),
       language: settings.language,
       tone: settings.tone,
-      // The real configured sender identity, shown in the flow preview's
-      // "From" line once a provider is set up. There's no per-shop sending
-      // subdomain — one verified address serves every merchant — so this
-      // is intentionally the same for all shops, not a fabricated one.
+      // The From line real sends use (process-jobs.server.ts): the sender
+      // name at hello@ the verified domain, else Nomi's address.
       fromAddress: providerConfigured
-        ? (() => {
+        ? await (async () => {
             const { fromName, fromEmail } = getEmailDeliveryConfig();
-            return `${fromName} <${fromEmail}>`;
+            const domain = await db.sendingDomain.findUnique({
+              where: { shop: session.shop },
+              select: { domain: true, status: true },
+            });
+            return fromHeader({
+              senderName: settings.senderName || shopName,
+              verifiedDomain: isSendingDomainReady(domain?.status) ? domain?.domain : null,
+              fallbackName: fromName,
+              fallbackEmail: fromEmail,
+            });
           })()
         : null,
       pendingJobs,

@@ -10,7 +10,21 @@ describe("hardenMobileBoxSizing", () => {
   });
 
   it("leaves an email without a mobile query untouched", () => {
-    const html = `<table width="600"><tr><td>Hi</td></tr></table>`;
+    const html = `<table width="100%" style="max-width:600px;"><tr><td width="90">Hi</td></tr></table>`;
+    expect(hardenMobileBoxSizing(html)).toBe(html);
+  });
+
+  it("lets a fixed 600px container shrink to a phone screen", () => {
+    expect(hardenMobileBoxSizing(`<table role="presentation" width="600" align="center" style="max-width:600px;">`)).toBe(
+      `<table role="presentation" width="600" align="center" style="width:100%;max-width:600px;">`,
+    );
+    expect(hardenMobileBoxSizing(`<table width="600"><tr><td>Hi</td></tr></table>`)).toBe(
+      `<table style="width:100%;max-width:600px;" width="600"><tr><td>Hi</td></tr></table>`,
+    );
+  });
+
+  it("leaves small fixed tables and ones that already set a width alone", () => {
+    const html = `<table width="120"></table><table width="600" style="width:600px;max-width:100%"></table>`;
     expect(hardenMobileBoxSizing(html)).toBe(html);
   });
 });

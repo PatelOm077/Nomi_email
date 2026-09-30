@@ -131,6 +131,9 @@ model ShopSettings {
   // { "cart": { "onlyNewSince": "<ISO>" } } (email-delivery/lifecycle-schedule.ts).
   flowSettings          String    @default("{}")
   contactsCountedAt     DateTime?
+  // "gid://shopify/Shop/123", needed to report usage to the App Events API
+  // from the worker (app/billing/usage-billing.server.ts).
+  shopGid               String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 }
@@ -146,6 +149,24 @@ model UsageCounter {
   updatedAt DateTime @updatedAt
 
   @@id([shop, period, metric])
+}
+
+// One $5 block of overage (500 extra emails or 500 extra contacts in a
+// month), queued once and reported to Shopify's App Events API by the
+// worker. The id is the event's idempotency key, so a block is never billed
+// twice (app/billing/usage-billing.server.ts).
+model UsageReport {
+  id         String    @id
+  shop       String
+  meter      String
+  period     String
+  block      Int
+  reportedAt DateTime?
+  attempts   Int       @default(0)
+  lastError  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([reportedAt, attempts])
 }
 
 // One durable record per shop for the Brand Studio onboarding and generation
