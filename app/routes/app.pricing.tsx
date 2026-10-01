@@ -8,7 +8,8 @@ import {
   EXTRA_EMAILS_BLOCK,
   EXTRA_EMAILS_PRICE_USD,
   METRIC_LABELS,
-  PLAN_IDS,
+  OFFERED_PLAN_IDS,
+  PAID_TRIAL_DAYS,
   PLANS,
   emailOverageUsd,
   contactOverageUsd,
@@ -65,7 +66,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const planId = formData.get("plan");
-  if (typeof planId !== "string" || !(PLAN_IDS as readonly string[]).includes(planId)) {
+  if (typeof planId !== "string" || !(OFFERED_PLAN_IDS as readonly string[]).includes(planId)) {
     return { ok: false, message: "Choose a valid plan." };
   }
   if (shopifyPricingConfigured()) {
@@ -155,6 +156,9 @@ function PlanCard({ plan, current, devStore, planUrl }: { plan: Plan; current: b
       <div>
         <span style={{ font: `600 36px/1 ${SERIF}`, letterSpacing: "-0.02em" }}>{money(plan.priceUsd)}</span>
         <span style={{ font: `400 14px ${SANS}`, color: N600, marginLeft: 4 }}>{plan.priceUsd ? "/mo" : "forever"}</span>
+        {plan.priceUsd ? (
+          <p style={{ margin: "8px 0 0", font: `600 12.5px/1.45 ${SANS}`, color: CYAN }}>{PAID_TRIAL_DAYS}-day free trial</p>
+        ) : null}
         <p style={{ margin: "8px 0 0", font: `400 13px/1.45 ${SANS}`, color: N700 }}>{plan.blurb}</p>
       </div>
       <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10, font: `400 13.5px/1.4 ${SANS}`, flex: 1 }}>
@@ -280,7 +284,7 @@ export default function PricingPage() {
       </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16, maxWidth: 1100 }}>
-        {PLAN_IDS.map((id) => (
+        {(OFFERED_PLAN_IDS.includes(planId as PlanId) ? OFFERED_PLAN_IDS : [...OFFERED_PLAN_IDS, planId as PlanId]).map((id) => (
           <PlanCard key={id} plan={PLANS[id]} current={id === planId} devStore={devStore} planUrl={planUrl} />
         ))}
       </div>

@@ -9,6 +9,14 @@
 export const PLAN_IDS = ["free", "starter", "growth", "pro"] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 
+// What's on sale right now (decided 2026-10-01): Free, Starter and Growth.
+// Pro stays defined so it can launch later, but it isn't shown or offered.
+// Keep in step with the public plans in the Partner Dashboard.
+export const OFFERED_PLAN_IDS: readonly PlanId[] = ["free", "starter", "growth"];
+
+/** Free trial on paid plans, set per plan in Shopify App Pricing. */
+export const PAID_TRIAL_DAYS = 7;
+
 export const USAGE_METRICS = [
   "brand_build",
   "email_regenerate",

@@ -2482,3 +2482,6 @@ with Back / Next / Finish replay and clickable step tabs.
 - Flow Editor header: "Replay setup" and the language menu are both gone; the brand card and its 13-of-13 bar sit alone on the right. Checked live at desktop and 375: `screenshots/no-replay-no-language-flow-editor-desktop.png`, `no-replay-no-language-flow-editor-mobile.png`.
 - Brand Studio finish screen: "Replay setup" link removed. Campaigns' verified-domain row: "Replay setup" renamed "Domain settings" (same link to the domain's records). Not re-screenshotted.
 - Tabs opened before a deploy keep the old page until reloaded.
+
+## 2026-10-01 — Launch with Free, Starter, Growth; 7-day trial (live on Fly v48)
+- Plan & billing shows only Free, Starter and Growth (Pro is defined in plans.ts but not offered), and a cyan "7-day free trial" line under the Starter and Growth prices. Help guide and assistant describe the same three plans and the trial. Checked live at desktop and 375: `screenshots/pricing-three-plans-trial-desktop.png`, `pricing-three-plans-trial-mobile.png`.

@@ -94,7 +94,10 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
     per-send generation at low effort when the customer's language differs
     from the store's or the approved email predates the markup.
 - `app/billing/` — plans and limits. `plans.ts` is the one source of prices
-  and allowances (Free $0 one-time trial, Starter $29, Growth $79, Pro $199;
+  and allowances. On sale now (`OFFERED_PLAN_IDS`, 2026-10-01): Free,
+  Starter and Growth, paid plans with a 7-day free trial (`PAID_TRIAL_DAYS`,
+  set in the Partner Dashboard); Pro is defined but not offered or shown
+  (Free $0 one-time trial, Starter $29, Growth $79, Pro $199;
   extra emails or subscribed contacts $5 per 500; contacts are Shopify
   customers subscribed to email marketing, 250 / 1k / 5k / 15k by plan,
   counted hourly by `contacts.server.ts`; Free pauses sending when over). `usage.server.ts` checks an allowance before any
