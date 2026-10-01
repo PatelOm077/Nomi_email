@@ -207,7 +207,6 @@ type GenerationRequest = {
 type DashboardActionRequest =
   | GenerationRequest
   | { kind: "set-sending"; enabled: boolean }
-  | { kind: "set-language"; language: EmailLanguage }
   | { kind: "set-tone"; tone: EmailTone }
   | { kind: "set-only-new"; flow: string; enabled: boolean };
 
@@ -242,17 +241,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
       return { deliveryUpdated: true };
     }
-    if (parsed.kind === "set-language") {
-      if (!EMAIL_LANGUAGES.some(({ code }) => code === parsed.language)) {
-        return { error: "Unsupported email language." };
-      }
-      await db.shopSettings.upsert({
-        where: { shop: session.shop },
-        create: { shop: session.shop, language: parsed.language },
-        update: { language: parsed.language },
-      });
-      return { deliveryUpdated: true };
-    }
+    // Emails are English only for now (decided 2026-10-01); the language
+    // can't be changed, so there is no set-language action.
     if (parsed.kind === "set-only-new") {
       if (!SENDING_FLOWS.has(parsed.flow)) return { error: "This flow isn’t sending yet." };
       const current = await db.shopSettings.findUnique({ where: { shop: session.shop }, select: { flowSettings: true } });
@@ -299,7 +289,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
         html = await generateNewsletterEmail({
           shopName: parsed.shopName,
-          language: parsed.language,
+          language: "en",
           tone: parsed.tone,
           prompt,
           products: await Promise.all(parsed.products.map(async (product) => ({
@@ -860,9 +850,6 @@ export default function Index() {
     appEmbed,
     plan,
   } = useLoaderData<typeof loader>();
-  const [language, setLanguage] = useState<EmailLanguage>(
-    resolveDashboardLanguage(delivery.language),
-  );
   const [tone, setTone] = useState<EmailTone>(resolveDashboardTone(delivery.tone));
   // Resolve the browser-only completion flag before mounting the animated
   // onboarding. Rendering it during SSR can start its CSS animations before
@@ -1073,19 +1060,6 @@ export default function Index() {
                 <span aria-hidden="true">↻</span>
                 Replay setup
               </button>
-              <LanguageMenu
-                value={language}
-                label="Email language"
-                onChange={(nextLanguage) => {
-                  setLanguage(nextLanguage);
-                  deliveryFetcher.submit(
-                    {
-                      payload: JSON.stringify({ kind: "set-language", language: nextLanguage }),
-                    },
-                    { method: "POST" },
-                  );
-                }}
-              />
             </div>
           </div>
         </header>

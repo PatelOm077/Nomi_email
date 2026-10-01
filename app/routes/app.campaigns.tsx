@@ -81,8 +81,9 @@ import { GeneratingProgress } from "../components/generating-progress";
 
 const CAMPAIGN_PAGE_SIZE = 12;
 
-function resolveCampaignLanguage(value: string | undefined): EmailLanguage {
-  return EMAIL_LANGUAGES.some(({ code }) => code === value) ? (value as EmailLanguage) : "en";
+// Emails are English only for now (2026-10-01), whatever was saved before.
+function resolveCampaignLanguage(_value: string | undefined): EmailLanguage {
+  return "en";
 }
 function resolveCampaignTone(value: string | undefined): EmailTone {
   return EMAIL_TONES.some(({ code }) => code === value) ? (value as EmailTone) : "warm-plain";

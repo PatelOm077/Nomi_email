@@ -79,12 +79,12 @@ export type LifecycleEngineResult = {
   costMicros: number;
 };
 
-/** The shop's email language and tone, as campaigns read them. */
+/** The shop's email language and tone. Emails are English only for now (2026-10-01). */
 export function lifecycleLanguageAndTone(
   settings: { language?: string | null; tone?: string | null } | null,
 ): { language: EmailLanguage; tone: EmailTone } {
   return {
-    language: EMAIL_LANGUAGES.find(({ code }) => code === settings?.language)?.code ?? "en",
+    language: "en",
     tone: EMAIL_TONES.find(({ code }) => code === settings?.tone)?.code ?? "warm-plain",
   };
 }

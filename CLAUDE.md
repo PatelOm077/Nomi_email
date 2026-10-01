@@ -152,6 +152,11 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
   `/design`, which doesn't exist despite older notes referencing it.
 
 ## Conventions
+- Emails are English only for now (decided 2026-10-01): no language picker
+  in the Flow Editor or Brand & Settings, and every write/send path uses
+  "en" whatever the customer's locale or the old `ShopSettings.language`.
+  The multi-language plumbing (`EMAIL_LANGUAGES`, the unused `LanguageMenu`
+  in `app._index.tsx`) is kept for when languages come back.
 - Shopify-shape mapping (GraphQL field renaming, response shaping) belongs
   in the route file, never inside `app/email-engine/`.
 - Generated email HTML is always table-based with inline styles only, font

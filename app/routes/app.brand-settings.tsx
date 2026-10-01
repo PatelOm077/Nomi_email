@@ -4,7 +4,6 @@ import { Form, Link, data, redirect, useActionData, useLoaderData, useNavigation
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { EMAIL_LANGUAGES } from "../email-engine/types";
 import { loadDashboardCatalog } from "../dashboard/dashboard-data.server";
 import { brandEvidenceSchema, safeJson, type BrandEvidence } from "../brand-studio/types";
 import { normalizeLumenBrandEvidence } from "../brand-studio/shopify-evidence.server";
@@ -60,7 +59,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       palette: storedEvidence?.assets?.palette ?? null,
       fonts: storedEvidence?.assets?.fontHints ?? [],
       themeName: storedEvidence?.assets?.theme?.name ?? null,
-      language: settings.language,
     },
     // Empty fields fall back to the Shopify store address, so the form opens
     // prefilled and the merchant only fixes what's missing.
@@ -78,17 +76,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "save-branding") {
     const submittedLogo = optional(form, "logoUrl", 1000);
     const primaryColor = optional(form, "primaryColor", 7);
-    const language = String(form.get("language") ?? "");
     if (!validWebUrl(submittedLogo)) return data({ error: "Use a complete http or https URL for the logo.", section: "branding" }, { status: 422 });
     if (!primaryColor) return data({ error: "Add a primary color, like #b96f52.", section: "branding" }, { status: 422 });
     if (!/^#[0-9a-f]{6}$/i.test(primaryColor)) return data({ error: `Primary color “${primaryColor}” isn’t a valid hex color. Use six hex digits, like #1d1a18.`, section: "branding" }, { status: 422 });
-    if (!EMAIL_LANGUAGES.some((item) => item.code === language)) return data({ error: "Choose a supported email language.", section: "branding" }, { status: 422 });
     // Picking the Shopify-detected logo means "no override" — store null so a
     // later theme logo change still flows through instead of being pinned.
     const profile = await db.brandStudioProfile.findUnique({ where: { shop: session.shop }, select: { evidence: true } });
     const detectedLogo = profile ? safeJson(profile.evidence, brandEvidenceSchema, null as BrandEvidence | null)?.assets?.logoUrl ?? null : null;
     const logoUrl = submittedLogo && submittedLogo !== detectedLogo ? submittedLogo : null;
-    const values = { brandLogoUrl: logoUrl, brandPrimaryColor: primaryColor.toLowerCase(), language };
+    const values = { brandLogoUrl: logoUrl, brandPrimaryColor: primaryColor.toLowerCase() };
     await db.shopSettings.upsert({ where: { shop: session.shop }, create: { shop: session.shop, ...values }, update: values });
     return redirect("/app/brand-settings?section=branding&saved=branding");
   }
@@ -184,7 +180,8 @@ function BrandingForm({ branding, busy }: { branding: BrandingValues; busy: bool
             <p style={{ flex: "1 1 240px", margin: 0, color: "#605d5d", font: `400 12.5px/1.5 ${SETTINGS_SANS}` }}>Paper, ink, accent, brand name and type come from Brand Studio. Changing them there rebuilds your 13 emails so they stay consistent.</p>
             <Link to="/app/brand-studio?step=snapshot" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 44, padding: "0 16px", border: "1px solid #201e1d", borderRadius: 3, background: "#fff", color: "#201e1d", font: `600 13px/1 ${SETTINGS_SANS}`, textDecoration: "none", whiteSpace: "nowrap" }}>Change in Brand Studio</Link>
           </div>
-          <label style={{ display: "grid", gap: 7, maxWidth: 320 }}><span>Email language</span><select name="language" defaultValue={branding.language}>{EMAIL_LANGUAGES.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
+          {/* English only for now (decided 2026-10-01); no other language is offered. */}
+          <StudioText label="Email language" value="English" missing="English" />
         </div>
       </div>
       {branding.themeName ? <p style={{ margin: "14px 0 0", color: "#746f6b", fontSize: 12 }}>Read from published theme <strong style={{ color: "#201e1d" }}>{branding.themeName}</strong></p> : null}

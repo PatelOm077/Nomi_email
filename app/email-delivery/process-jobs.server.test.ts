@@ -426,7 +426,7 @@ describe("processPendingEmailJobs", () => {
     await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
     expect(mocks.generateReviewRequestEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        language: "es",
+        language: "en",
         reviewUrl: "https://shop.example.com/products/linen-throw",
       }),
       { effort: "low" },
@@ -493,7 +493,7 @@ describe("processPendingEmailJobs", () => {
     await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
     expect(mocks.generateAbandonedCartEmail).toHaveBeenCalledWith({
       shopName: "Paper Boat Goods",
-      language: "pt",
+      language: "en",
       tone: "warm-plain",
       customerFirstName: null,
       recoveryUrl: "https://shop.example.com/checkouts/recover/checkout-token",
@@ -575,16 +575,16 @@ describe("processPendingEmailJobs", () => {
       expect(sent.html).toContain("Paper Boat · 1 Harbour St, Leith, UK");
     });
 
-    it("generates at low effort when the customer reads another language", async () => {
+    it("sends the approved English email whatever the customer's locale or a saved language", async () => {
+      // Emails are English only for now (2026-10-01).
       mocks.db.emailJob.findMany.mockResolvedValue([cartJob("pt-BR")]);
+      mocks.db.shopSettings.findUnique.mockResolvedValue({ sendingEnabled: true, language: "es", tone: "warm-plain" });
       mocks.db.brandStudioProfile.findUnique.mockResolvedValue(slottedProfile());
       setGraphqlResponse(multiItemCheckout);
 
       await expect(processPendingEmailJobs()).resolves.toMatchObject({ sent: 1 });
-      expect(mocks.generateAbandonedCartEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ language: "pt" }),
-        { effort: "low" },
-      );
+      expect(mocks.generateAbandonedCartEmail).not.toHaveBeenCalled();
+      expect((mocks.sendEmail.mock.calls[0][0] as { subject: string }).subject).toBe("A considered note 6");
     });
 
     it("sends the approved review email pointing at the purchased product", async () => {

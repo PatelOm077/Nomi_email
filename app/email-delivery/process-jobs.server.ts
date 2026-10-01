@@ -168,8 +168,12 @@ function resolveLanguage(value: unknown, fallback: string): EmailLanguage {
 // per-send generated email; the brand is already designed, so low effort.
 const FALLBACK_GENERATION: GenerateEmailOptions = { effort: "low" };
 
-function isStoreLanguage(language: EmailLanguage, storeLanguage: string | null | undefined): boolean {
-  return language === resolveLanguage(storeLanguage ?? "en", "en");
+// Emails are English only for now (2026-10-01): every customer gets the
+// approved English email, whatever their locale or a previously saved setting.
+const STORE_LANGUAGE: EmailLanguage = "en";
+
+function isStoreLanguage(language: EmailLanguage, _storeLanguage?: string | null): boolean {
+  return language === STORE_LANGUAGE;
 }
 
 function resolveTone(value: string | undefined): EmailTone {
@@ -220,7 +224,7 @@ async function prepareAbandonedCart(
   if (cached) return cached;
 
   const settings = await db.shopSettings.findUnique({ where: { shop } });
-  const language = resolveLanguage(payload.customer_locale, settings?.language ?? "en");
+  const language = STORE_LANGUAGE;
   const tone = resolveTone(settings?.tone);
   const lineItems = await Promise.all(checkout.lineItems.edges.map(async ({ node }) => ({
     title: node.title ?? "Item",
@@ -314,7 +318,7 @@ async function prepareEmail(
   if (cached) return cached.to === order.email ? cached : null;
 
   const settings = await db.shopSettings.findUnique({ where: { shop } });
-  const language = resolveLanguage(payload.customer_locale, settings?.language ?? "en");
+  const language = STORE_LANGUAGE;
   const tone = resolveTone(settings?.tone);
   const common = {
     shopName: data.shop.name,
