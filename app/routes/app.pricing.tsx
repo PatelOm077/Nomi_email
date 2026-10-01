@@ -5,13 +5,10 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import {
-  EXTRA_EMAILS_BLOCK,
-  EXTRA_EMAILS_PRICE_USD,
   METRIC_LABELS,
   OFFERED_PLAN_IDS,
   PAID_TRIAL_DAYS,
   PLANS,
-  emailOverageUsd,
   contactOverageUsd,
   EXTRA_CONTACTS_BLOCK,
   EXTRA_CONTACTS_PRICE_USD,
@@ -167,7 +164,10 @@ function PlanCard({ plan, current, devStore, planUrl }: { plan: Plan; current: b
           <li key={metric} style={{ display: "flex", gap: 9 }}><Check /><span>{allowanceLine(plan, metric)}</span></li>
         ))}
         {plan.emailOverage ? (
-          <li style={{ display: "flex", gap: 9 }}><Check /><span>More contacts or emails: {money(EXTRA_CONTACTS_PRICE_USD)}/mo per {fmt(EXTRA_CONTACTS_BLOCK)}</span></li>
+          <>
+            <li style={{ display: "flex", gap: 9 }}><Check /><span>More contacts: {money(EXTRA_CONTACTS_PRICE_USD)}/mo per {fmt(EXTRA_CONTACTS_BLOCK)}</span></li>
+            <li style={{ display: "flex", gap: 9 }}><Check /><span>Emails past the allowance send free</span></li>
+          </>
         ) : null}
       </ul>
       {planUrl && !current ? (
@@ -212,7 +212,6 @@ export default function PricingPage() {
   const { planId, rows, contacts, devStore, shopifyBilling, planUrl } = useLoaderData<typeof loader>();
   const plan = PLANS[planId as PlanId];
   const emailsSent = rows.find(({ metric }) => metric === "email_sent")?.used ?? 0;
-  const overage = emailOverageUsd(plan, emailsSent);
   const contactCount = contacts ?? 0;
   const contactExtra = contactOverageUsd(plan, contactCount);
   const contactsOver = contactCount > plan.contacts;
@@ -254,7 +253,8 @@ export default function PricingPage() {
           {LINE_METRICS.map((metric) => {
             const row = rows.find((candidate) => candidate.metric === metric)!;
             const pct = row.limit ? Math.min(100, (row.used / row.limit) * 100) : 0;
-            const over = row.limit !== null && row.used >= row.limit && row.limit > 0;
+            // Paid plans' emails never stop, so going past isn't shown as a problem.
+            const over = row.limit !== null && row.used >= row.limit && row.limit > 0 && !(metric === "email_sent" && plan.emailOverage);
             return (
               <div key={metric} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <span style={{ font: `500 12.5px ${SANS}`, color: N700 }}>{METRIC_LABELS[metric].many[0].toUpperCase() + METRIC_LABELS[metric].many.slice(1)}</span>
@@ -276,9 +276,9 @@ export default function PricingPage() {
               : `You have more subscribed contacts than Free includes, so sending is paused. Choose a paid plan to keep sending.`}
           </p>
         ) : null}
-        {overage > 0 ? (
+        {plan.emailOverage && emailsSent > (plan.limits.email_sent ?? Infinity) ? (
           <p style={{ margin: 0, font: `400 13px ${SANS}`, color: N700 }}>
-            {fmt(emailsSent - (plan.limits.email_sent ?? 0))} emails over your plan this month: {money(overage)} extra.
+            {fmt(emailsSent - (plan.limits.email_sent ?? 0))} emails past your plan this month. They keep sending at no extra charge.
           </p>
         ) : null}
       </section>

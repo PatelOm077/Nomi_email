@@ -13,23 +13,23 @@ const now = new Date("2026-10-12T10:00:00Z");
 let database: PrismaTestDatabase;
 let billing: typeof import("./usage-billing.server");
 
-describe("overageBlocks", () => {
+describe("contactOverageBlocks", () => {
   beforeAll(async () => {
     billing = await import("./usage-billing.server");
   });
 
-  it("counts every started block of 500 past the plan", () => {
-    expect(billing.overageBlocks(PLANS.starter, 3_000, 1_000)).toEqual({ emails: 0, contacts: 0 });
-    expect(billing.overageBlocks(PLANS.starter, 3_001, 1_500)).toEqual({ emails: 1, contacts: 1 });
-    expect(billing.overageBlocks(PLANS.starter, 4_200, 1_501)).toEqual({ emails: 3, contacts: 2 });
+  it("counts every started block of 500 subscribed contacts past the plan", () => {
+    expect(billing.contactOverageBlocks(PLANS.starter, 1_000)).toBe(0);
+    expect(billing.contactOverageBlocks(PLANS.starter, 1_200)).toBe(1);
+    expect(billing.contactOverageBlocks(PLANS.growth, 6_100)).toBe(3);
   });
 
   it("never bills Free, which pauses instead", () => {
-    expect(billing.overageBlocks(PLANS.free, 9_000, 9_000)).toEqual({ emails: 0, contacts: 0 });
+    expect(billing.contactOverageBlocks(PLANS.free, 9_000)).toBe(0);
   });
 
   it("keeps idempotency keys within Shopify's 64 characters", () => {
-    const id = billing.usageReportId(`${"a".repeat(60)}.myshopify.com`, billing.USAGE_METERS.contacts, "2026-10", 120);
+    const id = billing.usageReportId(`${"a".repeat(60)}.myshopify.com`, "2026-10", 120);
     expect(id.length).toBeLessThanOrEqual(64);
   });
 });
@@ -67,14 +67,14 @@ describe("usage billing with SQLite", () => {
     await database.dispose();
   });
 
-  it("queues each started block once per month", async () => {
-    await expect(billing.queueOverageBlocks(shop, now)).resolves.toBe(4); // 2 email + 2 contact blocks
+  it("queues each started contact block once per month, and never bills extra emails", async () => {
+    // 1,600 contacts on Starter = 2 blocks; 3,700 emails (700 over) aren't charged.
+    await expect(billing.queueOverageBlocks(shop, now)).resolves.toBe(2);
     await expect(billing.queueOverageBlocks(shop, now)).resolves.toBe(0);
+    const reports = await database.client.usageReport.findMany();
+    expect(new Set(reports.map(({ meter }) => meter))).toEqual(new Set(["extra_contacts_500"]));
 
-    await database.client.usageCounter.update({
-      where: { shop_period_metric: { shop, period: "2026-10", metric: "email_sent" } },
-      data: { count: 4_100 },
-    });
+    await database.client.shopSettings.update({ where: { shop }, data: { subscribedContacts: 2_100 } });
     await expect(billing.queueOverageBlocks(shop, now)).resolves.toBe(1);
   });
 
@@ -89,7 +89,7 @@ describe("usage billing with SQLite", () => {
       return Response.json({ success: true }, { status: 202 });
     });
 
-    await expect(billing.flushUsageReports()).resolves.toEqual({ reported: 3, failed: 1 });
+    await expect(billing.flushUsageReports()).resolves.toEqual({ reported: 1, failed: 1 });
     const eventCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/app/"));
     expect(eventCall?.[0]).toBe("https://api.shopify.com/app/2026-10/events");
     expect(JSON.parse(String(eventCall?.[1].body))).toMatchObject({

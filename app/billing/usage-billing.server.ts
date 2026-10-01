@@ -1,10 +1,9 @@
-// Charges paid plans for going past their monthly emails or subscribed
-// contacts: $5 per started block of 500 (plans.ts), through Shopify App
-// Pricing usage meters.
+// Charges paid plans for subscribed contacts past their plan: $5 per
+// started block of 500 a month (plans.ts), through a Shopify App Pricing
+// usage meter. Extra emails are not charged (decided 2026-10-01).
 //
-// Each paid plan in the Partner Dashboard carries two meters, both
-// "Fixed", $5.00 per unit, 0 included units:
-//   extra_emails_500    one unit per started 500 emails past the plan's
+// Each paid plan in the Partner Dashboard carries one meter, "Fixed",
+// $5.00 per unit, 0 included units:
 //   extra_contacts_500  one unit per started 500 subscribed contacts past it
 // The worker queues every started block as a UsageReport row whose id is the
 // App Events idempotency key, then reports each one once. Blocks are counted
@@ -16,16 +15,9 @@
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { refreshSubscribedContacts } from "./contacts.server";
-import {
-  EXTRA_CONTACTS_BLOCK,
-  EXTRA_EMAILS_BLOCK,
-  planFor,
-  usagePeriod,
-  type Plan,
-} from "./plans";
+import { EXTRA_CONTACTS_BLOCK, planFor, usagePeriod, type Plan } from "./plans";
 
 export const USAGE_METERS = {
-  emails: "extra_emails_500",
   contacts: "extra_contacts_500",
 } as const;
 
@@ -39,20 +31,16 @@ export function usageBillingEnabled(): boolean {
   );
 }
 
-/** Started 500-blocks past the plan's allowance. Free never has overage. */
-export function overageBlocks(plan: Plan, emailsSent: number, contacts: number) {
-  if (!plan.emailOverage) return { emails: 0, contacts: 0 };
-  const includedEmails = plan.limits.email_sent ?? Infinity;
-  return {
-    emails: emailsSent > includedEmails ? Math.ceil((emailsSent - includedEmails) / EXTRA_EMAILS_BLOCK) : 0,
-    contacts: contacts > plan.contacts ? Math.ceil((contacts - plan.contacts) / EXTRA_CONTACTS_BLOCK) : 0,
-  };
+/** Started 500-blocks of subscribed contacts past the plan. Free never has overage. */
+export function contactOverageBlocks(plan: Plan, contacts: number): number {
+  if (!plan.emailOverage || contacts <= plan.contacts) return 0;
+  return Math.ceil((contacts - plan.contacts) / EXTRA_CONTACTS_BLOCK);
 }
 
 // App Events idempotency keys max out at 64 characters.
-export function usageReportId(shop: string, meter: string, period: string, block: number): string {
+export function usageReportId(shop: string, period: string, block: number): string {
   const store = shop.replace(/\.myshopify\.com$/, "").slice(0, 30);
-  return `${meter === USAGE_METERS.emails ? "em" : "ct"}:${store}:${period}:${block}`;
+  return `ct:${store}:${period}:${block}`;
 }
 
 /** Queues any newly started overage blocks for this shop and month. */
@@ -63,23 +51,16 @@ export async function queueOverageBlocks(shop: string, now = new Date()): Promis
   });
   const plan = planFor(settings?.plan);
   if (!plan.emailOverage) return 0;
+  // Calendar month, the same period the usage limits use.
   const period = usagePeriod(plan, "email_sent", now);
-  const counter = await db.usageCounter.findUnique({
-    where: { shop_period_metric: { shop, period, metric: "email_sent" } },
-  });
-  const blocks = overageBlocks(plan, counter?.count ?? 0, settings?.subscribedContacts ?? 0);
+  const meter = USAGE_METERS.contacts;
   let queued = 0;
-  for (const [meter, count] of [
-    [USAGE_METERS.emails, blocks.emails],
-    [USAGE_METERS.contacts, blocks.contacts],
-  ] as const) {
-    for (let block = 1; block <= count; block += 1) {
-      const id = usageReportId(shop, meter, period, block);
-      const existing = await db.usageReport.findUnique({ where: { id }, select: { id: true } });
-      if (existing) continue;
-      await db.usageReport.create({ data: { id, shop, meter, period, block } });
-      queued += 1;
-    }
+  for (let block = 1; block <= contactOverageBlocks(plan, settings?.subscribedContacts ?? 0); block += 1) {
+    const id = usageReportId(shop, period, block);
+    const existing = await db.usageReport.findUnique({ where: { id }, select: { id: true } });
+    if (existing) continue;
+    await db.usageReport.create({ data: { id, shop, meter, period, block } });
+    queued += 1;
   }
   return queued;
 }

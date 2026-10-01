@@ -435,7 +435,7 @@ export async function processPendingEmailJobs(limit = 10) {
         continue;
       }
       // Checked before any generation cost. Paid plans always pass (extra
-      // emails are billed per block); Free stops at its monthly emails. A job
+      // emails are free); Free stops at its monthly emails. A job
       // already handed to the provider is always finished.
       if (!job.deliveryStartedAt) {
         const allowance = await checkAllowance(job.shop, "email_sent");

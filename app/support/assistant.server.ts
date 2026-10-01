@@ -2,8 +2,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { PrismaClient } from "@prisma/client";
 import { getAnthropicClient } from "../email-engine/anthropic-client";
 import {
-  EXTRA_EMAILS_BLOCK,
-  EXTRA_EMAILS_PRICE_USD,
+  EXTRA_CONTACTS_BLOCK,
+  EXTRA_CONTACTS_PRICE_USD,
   METRIC_LABELS,
   OFFERED_PLAN_IDS,
   PAID_TRIAL_DAYS,
@@ -46,7 +46,7 @@ function plansText() {
       return `- ${plan.name}: $${plan.priceUsd}/month. Up to ${plan.contacts.toLocaleString("en-US")} subscribed contacts; ${limits} (${period}). ${plan.blurb}`;
     })
     .join("\n");
-  return `${plans}\nThese are the only plans on sale; there is no Pro plan right now. Starter and Growth start with a ${PAID_TRIAL_DAYS}-day free trial on Shopify's plan page.\nContacts means customers subscribed to email marketing. Paid plans keep working past their included contacts and emails at $${EXTRA_EMAILS_PRICE_USD} per extra ${EXTRA_EMAILS_BLOCK} contacts or emails a month; Free pauses sending when it has more subscribed contacts or sent emails than it includes. When an allowance runs out, the merchant can move up a plan; one-off add-ons can't be bought. Plans are chosen on the Plan & billing page (/app/pricing). Charging runs through Shopify once Nomi is listed on the Shopify App Store; until then paid plans can't be bought on a live store.`;
+  return `${plans}\nThese are the only plans on sale; there is no Pro plan right now. Starter and Growth start with a ${PAID_TRIAL_DAYS}-day free trial on Shopify's plan page.\nContacts means customers subscribed to email marketing. Paid plans keep working past their included contacts at $${EXTRA_CONTACTS_PRICE_USD} per extra ${EXTRA_CONTACTS_BLOCK} subscribed contacts a month; emails past a paid plan's allowance keep sending at no extra charge. Free pauses sending when it has more subscribed contacts or sent emails than it includes. When an allowance runs out, the merchant can move up a plan; one-off add-ons can't be bought. Plans are chosen on the Plan & billing page (/app/pricing). Charging runs through Shopify once Nomi is listed on the Shopify App Store; until then paid plans can't be bought on a live store.`;
 }
 
 const SYSTEM_PROMPT = `You are Nomi's in-app help assistant. Nomi is a Shopify app that designs a store's lifecycle emails with AI: "Install it, and your store's email is done." You talk to the merchant who owns the store, inside the Nomi app in their Shopify admin.

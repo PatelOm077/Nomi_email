@@ -8,7 +8,7 @@ import { loadDashboardCatalog } from "../dashboard/dashboard-data.server";
 import { brandEvidenceSchema, safeJson, type BrandEvidence } from "../brand-studio/types";
 import { normalizeLumenBrandEvidence } from "../brand-studio/shopify-evidence.server";
 import { ColorField, LogoPicker } from "../components/brand-inputs";
-import { EXTRA_EMAILS_BLOCK, EXTRA_EMAILS_PRICE_USD, planFor } from "../billing/plans";
+import { EXTRA_CONTACTS_BLOCK, EXTRA_CONTACTS_PRICE_USD, planFor } from "../billing/plans";
 import { loadShopFooterAddress, safeReturnTo } from "../dashboard/sender-footer.server";
 
 type SectionId = "profile" | "branding" | "sender" | "plan" | "excluded";
@@ -218,7 +218,7 @@ function PlanPanel({ planId }: { planId: string }) {
         <p style={kicker}>Price</p>
         <p style={{ margin: 0, color: "#201e1d", font: `400 13px/1.5 ${sans}` }}>
           <span style={{ font: '600 26px/1 "Source Serif 4", Georgia, serif' }}>${plan.priceUsd}</span><span style={{ color: "#7d7979" }}>{plan.priceUsd ? " /mo" : " forever"}</span>
-          <span style={{ display: "block", marginTop: 6, color: "#605d5d" }}>{plan.emailOverage ? `More emails: $${EXTRA_EMAILS_PRICE_USD}/mo per ${EXTRA_EMAILS_BLOCK}.` : "Upgrade any time for more emails and campaigns."}</span>
+          <span style={{ display: "block", marginTop: 6, color: "#605d5d" }}>{plan.emailOverage ? `More contacts: $${EXTRA_CONTACTS_PRICE_USD}/mo per ${EXTRA_CONTACTS_BLOCK}. Extra emails send free.` : "Upgrade any time for more emails and campaigns."}</span>
         </p>
         <Link to="/app/pricing" className="nomi-settings-save" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 44, width: "max-content", textDecoration: "none" }}>See plans &amp; usage <span aria-hidden="true">→</span></Link>
       </div>

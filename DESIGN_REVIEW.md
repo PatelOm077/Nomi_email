@@ -2485,3 +2485,6 @@ with Back / Next / Finish replay and clickable step tabs.
 
 ## 2026-10-01 — Launch with Free, Starter, Growth; 7-day trial (live on Fly v48)
 - Plan & billing shows only Free, Starter and Growth (Pro is defined in plans.ts but not offered), and a cyan "7-day free trial" line under the Starter and Growth prices. Help guide and assistant describe the same three plans and the trial. Checked live at desktop and 375: `screenshots/pricing-three-plans-trial-desktop.png`, `pricing-three-plans-trial-mobile.png`.
+
+## 2026-10-01 — Contacts-only overage (live on Fly v49)
+- Starter and Growth cards: "More contacts: $5/mo per 500" plus "Emails past the allowance send free"; the usage bar no longer turns magenta when a paid plan passes its email allowance. Brand & Settings plan panel, help guide and assistant say the same. Checked live at desktop: `screenshots/pricing-contacts-only-desktop.png`. Copy-only change to an already-checked layout; not re-checked at 768/375.

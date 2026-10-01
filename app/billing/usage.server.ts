@@ -48,7 +48,7 @@ export async function checkAllowance(shop: string, metric: UsageMetric, amount =
   const plan = await shopPlan(shop);
   if (metric === "email_sent" && !plan.emailOverage) {
     // Free includes a set number of subscribed contacts; paid plans keep
-    // sending past theirs (billed per block).
+    // sending past theirs (extra contacts are billed per block).
     const settings = await db.shopSettings.findUnique({ where: { shop }, select: { subscribedContacts: true } });
     const contacts = settings?.subscribedContacts ?? 0;
     if (contacts > plan.contacts) {
@@ -65,7 +65,7 @@ export async function checkAllowance(shop: string, metric: UsageMetric, amount =
   }
   const limit = plan.limits[metric];
   const used = await usedCount(shop, usagePeriod(plan, metric), metric);
-  // Paid plans keep sending past their included emails (billed per block).
+  // Paid plans keep sending past their included emails, at no extra charge.
   const allowed =
     limit === null || used + amount <= limit || (metric === "email_sent" && plan.emailOverage);
   return {

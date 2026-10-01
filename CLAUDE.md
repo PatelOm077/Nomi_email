@@ -98,7 +98,7 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
   Starter and Growth, paid plans with a 7-day free trial (`PAID_TRIAL_DAYS`,
   set in the Partner Dashboard); Pro is defined but not offered or shown
   (Free $0 one-time trial, Starter $29, Growth $79, Pro $199;
-  extra emails or subscribed contacts $5 per 500; contacts are Shopify
+  extra subscribed contacts $5 per 500, extra emails free; contacts are Shopify
   customers subscribed to email marketing, 250 / 1k / 5k / 15k by plan,
   counted hourly by `contacts.server.ts`; Free pauses sending when over). `usage.server.ts` checks an allowance before any
   AI spend and records it after success; campaigns, single regenerate,
@@ -109,11 +109,12 @@ Prisma/SQLite (dev). Email generation via `@anthropic-ai/sdk`, model
   API (needs SHOPIFY_PARTNER_API_ACCESS_TOKEN, SHOPIFY_PARTNER_ORG_ID,
   SHOPIFY_APP_GID). Plan handles must contain free/starter/growth/pro. Until
   those are set, `/app/pricing` switches plans on development stores only.
-  Overage ($5 per started 500 extra emails or subscribed contacts a month)
-  is billed by `usage-billing.server.ts`: the email-jobs worker queues each
-  block as a `UsageReport` and sends it once to the App Events API (meters
-  `extra_emails_500` and `extra_contacts_500` on each paid plan, Fixed, $5
-  per unit, 0 included). Off until `NOMI_USAGE_BILLING=on`.
+  Overage is contacts only ($5 per started 500 extra subscribed contacts a
+  month; emails past a paid plan's allowance send free, decided
+  2026-10-01). Billed by `usage-billing.server.ts`: the email-jobs worker
+  queues each block as a `UsageReport` and sends it once to the App Events
+  API (one meter, `extra_contacts_500`, on each paid plan: Fixed, $5 per
+  unit, 0 included). Off until `NOMI_USAGE_BILLING=on`.
 - `app/support/` — the in-app help chat (`SupportWidget.tsx`, mounted in
   `app.tsx` on every page) and its backend (`api.support.tsx`). Merchant
   questions are answered by Claude (`assistant.server.ts`), grounded on the

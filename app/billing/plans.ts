@@ -34,18 +34,17 @@ export type Plan = {
   lifetimeAllowances: boolean;
   /** null means unlimited. */
   limits: Record<UsageMetric, number | null>;
-  /** Paid plans may send past their included emails, billed per block. */
-  emailOverage: boolean;
   /**
-   * Email-subscribed customers included. Paid plans keep working past it,
-   * billed per block; Free pauses sending while over.
+   * Paid plans keep working past their allowances: extra subscribed contacts
+   * are billed per block, extra emails send at no charge (decided
+   * 2026-10-01). Free pauses sending when over either.
    */
+  emailOverage: boolean;
+  /** Email-subscribed customers included. */
   contacts: number;
   blurb: string;
 };
 
-export const EXTRA_EMAILS_BLOCK = 500;
-export const EXTRA_EMAILS_PRICE_USD = 5;
 export const EXTRA_CONTACTS_BLOCK = 500;
 export const EXTRA_CONTACTS_PRICE_USD = 5;
 
@@ -135,11 +134,4 @@ export function usagePeriod(plan: Plan, metric: UsageMetric, now = new Date()): 
 export function contactOverageUsd(plan: Plan, contacts: number): number {
   if (!plan.emailOverage || contacts <= plan.contacts) return 0;
   return Math.ceil((contacts - plan.contacts) / EXTRA_CONTACTS_BLOCK) * EXTRA_CONTACTS_PRICE_USD;
-}
-
-/** Extra monthly cost for emails sent past the plan's included amount. */
-export function emailOverageUsd(plan: Plan, sent: number): number {
-  const included = plan.limits.email_sent ?? Infinity;
-  if (!plan.emailOverage || sent <= included) return 0;
-  return Math.ceil((sent - included) / EXTRA_EMAILS_BLOCK) * EXTRA_EMAILS_PRICE_USD;
 }

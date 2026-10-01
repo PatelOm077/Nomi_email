@@ -3,7 +3,7 @@ import {
   createPrismaTestDatabase,
   type PrismaTestDatabase,
 } from "../email-delivery/test-support/prisma-test-database";
-import { emailOverageUsd, PLANS } from "./plans";
+import { PLANS } from "./plans";
 
 const shop = "plans-integration.myshopify.com";
 
@@ -121,13 +121,6 @@ describe("plan pricing", () => {
     expect(contactOverageUsd(PLANS.free, 900)).toBe(0);
     expect([PLANS.free, PLANS.starter, PLANS.growth, PLANS.pro].map(({ contacts }) => contacts)).toEqual([250, 1_000, 5_000, 15_000]);
   });
-  it("charges $5 per started block of 500 extra emails on paid plans only", () => {
-    expect(emailOverageUsd(PLANS.starter, 3_000)).toBe(0);
-    expect(emailOverageUsd(PLANS.starter, 3_001)).toBe(5);
-    expect(emailOverageUsd(PLANS.starter, 4_000)).toBe(10);
-    expect(emailOverageUsd(PLANS.free, 900)).toBe(0);
-  });
-
   it("matches the agreed plans", () => {
     expect([PLANS.free, PLANS.starter, PLANS.growth, PLANS.pro].map(({ priceUsd }) => priceUsd)).toEqual([0, 29, 79, 199]);
     expect([PLANS.free, PLANS.starter, PLANS.growth, PLANS.pro].map(({ limits }) => limits.campaign)).toEqual([3, 10, 20, 40]);
