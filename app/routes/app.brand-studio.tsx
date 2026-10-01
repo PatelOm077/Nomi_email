@@ -2062,7 +2062,6 @@ function CompleteStep({
         >
           ↻ Replay story
         </button>
-        <Link to="?step=welcome&replay=1">↻ Replay setup</Link>
         <Link className="is-primary" to="/app/flow-editor">
           Review my emails
         </Link>

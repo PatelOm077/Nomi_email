@@ -1051,7 +1051,7 @@ const DOMAIN_BANNER_DISMISS_KEY = "nomi:sending-domain-banner-dismissed";
 const BANNER_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 // Once verified, the banner shrinks to one quiet line so the merchant can
-// still see which address sends and replay the three setup pages.
+// still see which address sends and open its domain settings.
 function SendingDomainVerifiedRow({ domain }: { domain: string }) {
   return (
     <section
@@ -1069,8 +1069,7 @@ function SendingDomainVerifiedRow({ domain }: { domain: string }) {
         to="/app/sending-domain?replay=1"
         style={{ minHeight: 44, display: "inline-flex", alignItems: "center", gap: 6, padding: "0 12px", color: "#0088b0", fontSize: 14, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}
       >
-        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 10 A6.5 6.5 0 1 0 5.4 5.4" /><path d="M3.5 3.5 V7 H7" /></svg>
-        Replay setup
+        Domain settings
       </Link>
     </section>
   );

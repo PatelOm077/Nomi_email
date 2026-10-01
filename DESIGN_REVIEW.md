@@ -2477,3 +2477,8 @@ with Back / Next / Finish replay and clickable step tabs.
 - Flow Editor: the "Email language" dropdown next to Replay setup is removed; Replay setup now fills that row. Checked live at desktop: `screenshots/english-only-flow-editor-desktop.png`.
 - Brand & Settings → Branding: the language select is replaced by a fixed "Email language: English" field in the same style as Brand name. Checked live at desktop and 375: `screenshots/english-only-brand-settings-desktop.png`, `english-only-brand-settings-mobile.png`. Not checked at 768.
 - Every write and send path uses English (Brand Studio build and regenerates, campaigns, abandoned cart and review sends, whatever the customer's locale); a migration resets saved languages to "en".
+
+## 2026-10-01 — No Replay setup or language picker for merchants (live on Fly v47)
+- Flow Editor header: "Replay setup" and the language menu are both gone; the brand card and its 13-of-13 bar sit alone on the right. Checked live at desktop and 375: `screenshots/no-replay-no-language-flow-editor-desktop.png`, `no-replay-no-language-flow-editor-mobile.png`.
+- Brand Studio finish screen: "Replay setup" link removed. Campaigns' verified-domain row: "Replay setup" renamed "Domain settings" (same link to the domain's records). Not re-screenshotted.
+- Tabs opened before a deploy keep the old page until reloaded.

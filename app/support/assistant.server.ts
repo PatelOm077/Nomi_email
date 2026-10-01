@@ -69,7 +69,7 @@ Product facts:
 - Emails send from hello@ the merchant's verified domain, under their sender name; until a domain is verified they send from Nomi's address under the store's name. Domain setup opens from Sender info in Brand & Settings, or the banner on the Campaigns screen.
 - Sending must be switched on in Brand & Settings, and the brand must be approved in Brand Studio.- Campaigns: describe the campaign; Nomi designs a one-off email from the approved brand and real products, with optional AI photos and an optional discount. It creates a draft; audience selection, scheduling, and bulk sending are not available yet.
 - Contacts shows the store's customers and their email marketing consent. A customer record is not permission to send marketing.
-- Emails are written in English only for now; there is no language setting. Tone is picked during setup; "Replay setup" in the Flow Editor changes it.
+- Emails are written in English only for now; there is no language setting. Tone is picked once during setup.
 
 Plans:
 ${plansText()}

@@ -906,10 +906,6 @@ export default function Index() {
   // Embedded apps run inside an iframe on the app's own origin, not
   // admin.shopify.com — devtools opened on the parent page can't see or
   // clear this storage key. Do it from inside the app itself instead.
-  const replayOnboarding = () => {
-    navigate("/app/brand-studio?step=welcome&replay=1");
-  };
-
   const approvedRecipesById = new Map(brand.recipes.map((recipe) => [recipe.id, recipe]));
   const referenceTemplateDefinitions = buildLifecycleSlots(shopName);
   const referenceTemplates: ReferenceFlowTemplate[] = referenceTemplateDefinitions.map((template) => {
@@ -1051,16 +1047,6 @@ export default function Index() {
               </div>
             </div>
 
-            <div className="nomi-control-rail-actions">
-              <button
-                className="nomi-replay-setup"
-                type="button"
-                onClick={replayOnboarding}
-              >
-                <span aria-hidden="true">↻</span>
-                Replay setup
-              </button>
-            </div>
           </div>
         </header>
 
